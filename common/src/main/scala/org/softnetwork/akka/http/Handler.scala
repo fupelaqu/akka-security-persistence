@@ -17,9 +17,9 @@ trait Handler[T <: Command, R <: CommandResult] extends StrictLogging {
 
   def actor: ActorRef
 
-  implicit val timeout                      = Timeout(10.seconds)
+  implicit val timeout = Timeout(10.seconds)
 
-  val defaultAtMost = 1.second
+  val defaultAtMost    = 10.second
 
   def handle(command: T, atMost: Duration = defaultAtMost)(implicit c: ClassTag[R]): R = {
     Await.result((actor ? command).mapTo[R], atMost)
