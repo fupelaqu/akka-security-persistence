@@ -70,6 +70,8 @@ val slf4jVersion = "1.7.21"
 
 val log4sVersion = "1.3.3"
 
+val chillVersion = "0.9.2"
+
 val jacksonExclusions = Seq(
   ExclusionRule(organization = "com.fasterxml.jackson.core"),
   ExclusionRule(organization = "org.codehaus.jackson")
@@ -174,6 +176,14 @@ val libphonenumber = Seq(
   "com.googlecode.libphonenumber" % "geocoder" % "2.91"
 )
 
+val kryo = Seq(
+  "com.twitter" %% "chill-bijection" % chillVersion
+)
+
+val chill_akka = Seq(
+  "com.twitter" % "chill-akka_2.11" % chillVersion
+)
+
 resolvers in ThisBuild ++= Seq(
   Resolver.bintrayRepo("cakesolutions", "maven"),
   Resolver.bintrayRepo("hseeberger", "maven"),
@@ -183,6 +193,8 @@ resolvers in ThisBuild ++= Seq(
 
 libraryDependencies in ThisBuild ++=
       akka ++
+      kryo ++
+      chill_akka ++
       akkaPersistence ++
       akkaHttp ++
       kafka ++
