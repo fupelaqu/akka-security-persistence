@@ -13,6 +13,8 @@ case class BaseAccount(
   override val lastLogin: Option[Date] = None,
   override val nbLoginFailures: Int = 0,
   override val status: AccountStatus.Value = AccountStatus.Inactive,
+  override val activationToken: Option[VerificationToken] = None,
+  override val verificationCode: Option[VerificationCode] = None,
   firstName: Option[String] = None,
   lastName: Option[String] = None
 )extends Account {
@@ -27,6 +29,12 @@ case class BaseAccount(
 
   override def copyWithStatus(status: AccountStatus.Value): Account =
     copy(status = status)
+  
+  override def copyWithActivationToken(activationToken: Option[VerificationToken]): Account =
+    copy(activationToken = activationToken)
+
+  override def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account =
+    copy(verificationCode = verificationCode)
 
   override def view = BaseAccountInfo(this)
 }
@@ -34,7 +42,7 @@ case class BaseAccount(
 /** Profile companion object **/
 object BaseAccount{
 
-  import Password._
+  import Sha512Encryption._
 
   /** alias for email **/
   type Email = String
@@ -56,7 +64,7 @@ object BaseAccount{
       val status = if(principal.`type` == PrincipalType.Email)/* TODO Push notifications */ AccountStatus.Inactive else AccountStatus.Active
       Some(
         BaseAccount(
-          credentials = sha512(password),
+          credentials = encrypt(password),
           firstName = firstName,
           lastName = lastName,
           status = status

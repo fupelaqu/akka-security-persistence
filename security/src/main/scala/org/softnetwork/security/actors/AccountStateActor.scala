@@ -13,7 +13,8 @@ import org.softnetwork.security.config.Settings._
 import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message._
 import org.softnetwork.security.model._
-import Password._
+import Sha512Encryption._
+import Hash._
 
 import scala.io.Source
 
@@ -125,9 +126,20 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 
       case evt: ActivationTokenEvent =>
         import evt._
+        state.accounts.get(activationToken.uuid) match {
+          case Some(account) =>
+            val updatedAccount = account.copyWithActivationToken(Some(activationToken.verificationToken)).addAll(account.principals).asInstanceOf[T]
+            state = state.copy(
+              accounts = state.accounts.updated(
+                account.uuid,
+                updatedAccount
+              )
+            )
+          case _             =>
+        }
         state = state.copy(
           activationTokens = state.activationTokens.updated(
-            activationToken.verificationToken.token,
+            md5Hash(activationToken.verificationToken.token),
             activationToken
           )
         )
@@ -135,14 +147,25 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       case evt: RemoveActivationTokenEvent =>
         import evt._
         state = state.copy(
-          activationTokens = state.activationTokens - activationToken
+          activationTokens = state.activationTokens - md5Hash(activationToken)
         )
 
       case evt: VerificationCodeEvent =>
         import evt._
+        state.accounts.get(verificationCode.uuid) match {
+          case Some(account) =>
+            val updatedAccount = account.copyWithVerificationCode(Some(verificationCode.verificationCode)).addAll(account.principals).asInstanceOf[T]
+            state = state.copy(
+              accounts = state.accounts.updated(
+                updatedAccount.uuid,
+                updatedAccount
+              )
+            )
+          case _             =>
+        }
         state = state.copy(
           verificationCodes = state.verificationCodes.updated(
-            verificationCode.verificationCode.code,
+            md5Hash(verificationCode.verificationCode.code),
             verificationCode
           )
         )
@@ -150,7 +173,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       case evt: RemoveVerificationCodeEvent =>
         import evt._
         state = state.copy(
-          verificationCodes = state.verificationCodes - verificationCode
+          verificationCodes = state.verificationCodes - md5Hash(verificationCode)
         )
 
       case _                          =>
@@ -222,7 +245,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
     /** handle account activation **/
     case cmd: Activate =>
       import cmd._
-      state.activationTokens.get(token) match {
+      state.activationTokens.get(md5Hash(token)) match {
         case Some(activation) =>
           if(activation.check) {
             state.accounts.get(activation.uuid) match {
@@ -257,7 +280,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       import cmd._
       lookupAccount(login) match {
         case Some(account) if account.status == AccountStatus.Active =>
-          if(checkPassword(account.credentials, cmd.password)){
+          if(checkEncryption(account.credentials, cmd.password)){
             persist(
               new LoginSucceeded(
                 account
@@ -306,6 +329,18 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       if(EmailValidator.check(principal) || GsmValidator.check(principal)){
         lookupAccount(principal) match {
           case Some(account) =>
+            account.verificationCode match {
+              case Some(verification) =>
+                persist(
+                  RemoveVerificationCodeEvent(
+                    verification.code
+                  )
+                ){event =>
+                  updateState(event)
+                  context.system.eventStream.publish(event)
+                }
+              case _                =>
+            }
             val verificationCode = generator().generatePinCode(VerificationCodeSize, VerificationCodeExpirationTime)
             persist(
               VerificationCodeEvent(
@@ -333,7 +368,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         sender() ! PasswordsNotMatched
       }
       else{
-        state.verificationCodes.get(code) match {
+        state.verificationCodes.get(md5Hash(code)) match {
           case Some(verification) =>
             if(verification.check){
               state.accounts.get(verification.uuid) match {
@@ -341,7 +376,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                   persist(
                     new PasswordUpdated(
                       account
-                        .copyWithCredentials(sha512(newPassword))
+                        .copyWithCredentials(encrypt(newPassword))
                         .copyWithStatus(AccountStatus.Active) //TODO check this
                         .copyWithNbLoginFailures(0)
                         .addAll(account.secondaryPrincipals)
@@ -377,11 +412,11 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         lookupAccount(login) match {
           case Some(account) =>
             import account._
-            if(checkPassword(credentials, oldPassword)){
+            if(checkEncryption(credentials, oldPassword)){
               persist(
                 new PasswordUpdated(
                   account
-                    .copyWithCredentials(sha512(newPassword))
+                    .copyWithCredentials(encrypt(newPassword))
                     .copyWithStatus(AccountStatus.Active)
                     .copyWithNbLoginFailures(0)
                     .addAll(account.secondaryPrincipals)

@@ -1,9 +1,6 @@
 package org.softnetwork.security.handlers
 
-import java.util.Calendar
-
-import com.typesafe.scalalogging.StrictLogging
-import org.softnetwork.security.model.{VerificationCode, VerificationToken}
+import org.softnetwork.security.model.{ExpirationDate, VerificationCode, VerificationToken}
 
 /**
   * Created by smanciot on 09/04/2018.
@@ -23,21 +20,17 @@ class DefaultGenerator extends Generator {
     VerificationCode(pinSize, expiryTimeInMinutes)
 }
 
-class MockGenerator extends Generator {
+class MockGenerator extends Generator with ExpirationDate {
   val token = "token"
 
   val code  = "code"
 
   override def generateToken(login: String, expiryTimeInMinutes:Int): VerificationToken = {
-    val cal = Calendar.getInstance()
-    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
-    VerificationToken(token, cal.getTime.getTime)
+    VerificationToken(token, compute(expiryTimeInMinutes).getTime)
   }
 
   override def generatePinCode(pinSize: Int, expiryTimeInMinutes: Int): VerificationCode = {
-    val cal = Calendar.getInstance()
-    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
-    VerificationCode(code, cal.getTime.getTime)
+    VerificationCode(code, compute(expiryTimeInMinutes).getTime)
   }
 
 }

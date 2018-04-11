@@ -1,6 +1,6 @@
 package org.softnetwork.security.model
 
-import java.security.SecureRandom
+import java.security.{MessageDigest, SecureRandom}
 import java.util.{Calendar, Date, UUID}
 
 import org.apache.commons.codec.digest.Sha2Crypt
@@ -20,10 +20,15 @@ trait Account extends Principals {
   def gsm: Option[String] = get(PrincipalType.Gsm).map(_.value)
   def username: Option[String] = get(PrincipalType.Username).map(_.value)
 
+  def activationToken: Option[VerificationToken]
+  def verificationCode: Option[VerificationCode]
+
   def copyWithCredentials(credentials: String): Account
   def copyWithLastLogin(lastLogin: Option[Date]): Account
   def copyWithNbLoginFailures(nbLoginFailures: Int): Account
   def copyWithStatus(status: AccountStatus.Value): Account
+  def copyWithActivationToken(activationToken: Option[VerificationToken]): Account
+  def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account
 
   def view: AccountInfo
 }
@@ -45,13 +50,26 @@ object AccountStatus extends Enumeration {
   val Active = Value(2, "Active")
 }
 
-object Password {
-  def sha512(password: String) = Sha2Crypt.sha512Crypt(password.getBytes("UTF-8").clone())
+object Hash {
 
-  def isSha512(crypted: String)  = crypted.startsWith("$6$")
+  def md5Hash(text: String): String = MessageDigest.getInstance("MD5").digest(text.getBytes).map(0xFF & _).map { "%02x".format(_) }.foldLeft(""){_ + _}
 
-  def checkPassword(crypted: String, password: String) = {
-    if(!isSha512(crypted))
+}
+
+sealed trait Encryption {
+  def encrypt(clearText: String): String
+
+  def checkEncryption(crypted: String, clearText: String): Boolean
+}
+
+object Sha512Encryption extends Encryption {
+
+  def encrypt(clearText: String) = Sha2Crypt.sha512Crypt(clearText.getBytes("UTF-8").clone())
+
+  def isEncrypted(crypted: String)  = crypted.startsWith("$6$")
+
+  def checkEncryption(crypted: String, clearText: String) = {
+    if(!isEncrypted(crypted))
       false
     else {
       val offset2ndDolar = crypted.indexOf('$', 1)
@@ -62,7 +80,7 @@ object Password {
         if (offset3ndDolar < 0)
           false
         else {
-          crypted.equals(Sha2Crypt.sha512Crypt(password.getBytes("UTF-8").clone(), crypted.substring(0, offset3ndDolar + 1)))
+          crypted.equals(Sha2Crypt.sha512Crypt(clearText.getBytes("UTF-8").clone(), crypted.substring(0, offset3ndDolar + 1)))
         }
       }
     }
@@ -156,26 +174,34 @@ object PrincipalType extends Enumeration {
 
 case class VerificationToken(token: String, expirationDate: Long)
 
-object VerificationToken {
+trait ExpirationDate {
 
-  def apply(login: String, expiryTimeInMinutes:Int): VerificationToken = {
+  def compute(expiryTimeInMinutes: Int) = {
     val cal = Calendar.getInstance()
     cal.add(Calendar.MINUTE, expiryTimeInMinutes)
-    VerificationToken(BearerTokenGenerator.generateSHAToken(login), cal.getTime.getTime)
+    cal.getTime
+  }
+
+}
+
+object VerificationToken extends ExpirationDate {
+
+  def apply(login: String, expiryTimeInMinutes: Int): VerificationToken = {
+    val cal = Calendar.getInstance()
+    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
+    VerificationToken(BearerTokenGenerator.generateSHAToken(login), compute(expiryTimeInMinutes).getTime)
   }
 
 }
 
 case class VerificationCode(code: String, expirationDate: Long)
 
-object VerificationCode {
+object VerificationCode extends ExpirationDate {
 
-  def apply(pinSize: Int, expiryTimeInMinutes:Int): VerificationCode = {
-    val cal = Calendar.getInstance()
-    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
+  def apply(pinSize: Int, expiryTimeInMinutes: Int): VerificationCode = {
     VerificationCode(
       s"%0${pinSize}d".format(new SecureRandom().nextInt(math.pow(10, pinSize).toInt)),
-      cal.getTime.getTime
+      compute(expiryTimeInMinutes).getTime
     )
   }
 
