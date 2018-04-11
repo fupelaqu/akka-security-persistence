@@ -1,5 +1,6 @@
 package org.softnetwork.security.model
 
+import java.security.SecureRandom
 import java.util.{Calendar, Date, UUID}
 
 import org.apache.commons.codec.digest.Sha2Crypt
@@ -157,10 +158,26 @@ case class VerificationToken(token: String, expirationDate: Long)
 
 object VerificationToken {
 
-  def apply(login: String, expiryTimeInMinutes:Int = 60*24): VerificationToken = {
+  def apply(login: String, expiryTimeInMinutes:Int): VerificationToken = {
     val cal = Calendar.getInstance()
     cal.add(Calendar.MINUTE, expiryTimeInMinutes)
     VerificationToken(BearerTokenGenerator.generateSHAToken(login), cal.getTime.getTime)
   }
 
 }
+
+case class VerificationCode(code: String, expirationDate: Long)
+
+object VerificationCode {
+
+  def apply(pinSize: Int, expiryTimeInMinutes:Int): VerificationCode = {
+    val cal = Calendar.getInstance()
+    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
+    VerificationCode(
+      s"%0${pinSize}d".format(new SecureRandom().nextInt(math.pow(10, pinSize).toInt)),
+      cal.getTime.getTime
+    )
+  }
+
+}
+

@@ -19,15 +19,15 @@ import scala.concurrent.duration._
   */
 class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
 
-  val zookeeper              = s"localhost:${kafkaServer.zookeeperPort}"
+  val zookeeper                      = s"localhost:${kafkaServer.zookeeperPort}"
 
-  val broker                 = s"localhost:${kafkaServer.kafkaPort}"
+  val broker                         = s"localhost:${kafkaServer.kafkaPort}"
 
-  var actorSystem: ActorSystem = _
+  var actorSystem: ActorSystem       = _
 
   var accountHandler: AccountHandler = _
 
-  implicit val timeout_      = Timeout(10.seconds)
+  implicit val timeout               = Timeout(10.seconds)
 
   val config = ConfigFactory.parseString(s"""
                                             |    akka {
@@ -97,7 +97,10 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
       )
     )
     accountHandler = new AccountHandler(
-      actorSystem.actorOf(BaseAccountStateActor.props(notificationHandler), "baseAccountStateActor")
+      actorSystem.actorOf(BaseAccountStateActor.props(
+        notificationHandler,
+        new MockGenerator
+      ), "baseAccountStateActor")
     )
   }
 
@@ -108,14 +111,14 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
 
   "SignIn" should {
     "fail if confirmed password does not match password" in {
-      accountHandler.handle(SignIn(username, password, "fake"), 10.second) match {
+      accountHandler.handle(SignIn(username, password, "fake")) match {
         case _: PasswordsNotMatched.type =>
         case _                           => fail()
       }
     }
     "work with username" in {
       accountHandler.handle(SignIn(username, password, password)) match {
-        case r: AccountCreated[_]  => r.account.status shouldBe AccountStatus.Inactive
+        case r: AccountCreated[_]  => r.account.status shouldBe AccountStatus.Active
         case _                           => fail()
       }
     }
@@ -139,7 +142,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "work with gsm" in {
       accountHandler.handle(SignIn(gsm, password, password)) match {
-        case r: AccountCreated[_]  => r.account.status shouldBe AccountStatus.Inactive
+        case r: AccountCreated[_]  => r.account.status shouldBe AccountStatus.Active
         case _                           => fail()
       }
     }
@@ -161,6 +164,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "work with matching email and password" in {
       accountHandler.handle(SignIn(email, password, password))
+      accountHandler.handle(Activate("token"))
       accountHandler.handle(Login(email, password)) match {
         case _: LoginSucceeded[_]  =>
         case _                  => fail()
@@ -203,6 +207,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "fail with unmatching email and password" in {
       accountHandler.handle(SignIn(email, password, password))
+      accountHandler.handle(Activate("token"))
       accountHandler.handle(Login(email, "fake")) match {
         case _: LoginAndPasswordNotMatched.type  =>
         case _                                   => fail()
@@ -230,6 +235,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
   "SignOut" should {
     "work" in {
       accountHandler.handle(SignIn(gsm, password, password))
+      accountHandler.handle(UpdatePassword(gsm, password, password, password)) // account may have been previously disabled
       accountHandler.handle(Login(gsm, password)) match {
         case r: LoginSucceeded[_] =>
           accountHandler.handle(SignOut(r.account.uuid)) match {
@@ -237,6 +243,29 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
             case _                          => fail()
           }
         case _                          => fail(s"Login failed for $gsm:$password")
+      }
+    }
+  }
+
+  "SendVerificationCode" should {
+    "work" in {
+      accountHandler.handle(SignIn(email, password, password))
+      accountHandler.handle(Activate("token"))
+      accountHandler.handle(SendVerificationCode(email)) match {
+        case _: VerificationCodeSent.type =>
+        case _                            => fail(s"Verification code has not been sent for $email")
+      }
+    }
+  }
+
+  "ResetPassword" should {
+    "work" in {
+      accountHandler.handle(SignIn(email, password, password))
+      accountHandler.handle(Activate("token"))
+      accountHandler.handle(SendVerificationCode(email))
+      accountHandler.handle(ResetPassword("code", password, password)) match {
+        case _: PasswordReseted.type =>
+        case _                       => fail(s"Password has not been reseted for $email")
       }
     }
   }

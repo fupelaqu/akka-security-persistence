@@ -2,13 +2,18 @@ package org.softnetwork.security.actors
 
 import akka.actor.Props
 import org.softnetwork.notification.handlers.NotificationHandler
+import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message.SignIn
 import org.softnetwork.security.model.BaseAccount
 
 /**
   * Created by smanciot on 17/03/2018.
   */
-class BaseAccountStateActor(override val notificationHandler: NotificationHandler) extends AccountStateActor[BaseAccount] {
+class BaseAccountStateActor(
+  override val notificationHandler: NotificationHandler,
+  override val generator: Generator
+) extends AccountStateActor[BaseAccount] {
+
   override val persistenceId: String = "account-state"
 
   override var state: AccountState[BaseAccount] = AccountState[BaseAccount]()
@@ -23,7 +28,9 @@ class BaseAccountStateActor(override val notificationHandler: NotificationHandle
 }
 
 object BaseAccountStateActor {
-  def props(notificationHandler: NotificationHandler) = Props(new BaseAccountStateActor(notificationHandler))
+  def props(notificationHandler: NotificationHandler, generator: Generator) = Props(
+    new BaseAccountStateActor(notificationHandler, generator)
+  )
   val snapshotInterval = 1000L
   val maxFailures = 5
 }

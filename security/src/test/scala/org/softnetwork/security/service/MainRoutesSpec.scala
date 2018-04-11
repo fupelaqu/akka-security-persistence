@@ -15,7 +15,7 @@ import org.softnetwork.notification.actors.MockNotificationActor
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.config.Settings
-import org.softnetwork.security.handlers.AccountHandler
+import org.softnetwork.security.handlers.{AccountHandler, MockGenerator}
 import org.softnetwork.security.message._
 import org.softnetwork.security.model.{BaseAccountInfo, AccountStatus}
 import org.softnetwork.session.actors.SessionRefreshTokenStateActor
@@ -28,13 +28,13 @@ import scala.concurrent.duration._
   */
 class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with KafkaSpec with Json4sSupport {
 
-  val zookeeper              = s"localhost:${kafkaServer.zookeeperPort}"
+  val zookeeper                = s"localhost:${kafkaServer.zookeeperPort}"
 
-  val broker                 = s"localhost:${kafkaServer.kafkaPort}"
+  val broker                   = s"localhost:${kafkaServer.kafkaPort}"
 
   var actorSystem: ActorSystem = _
 
-  implicit val timeout_      = Timeout(10.seconds)
+  implicit val timeout         = Timeout(10.seconds)
 
   val config = ConfigFactory.parseString(s"""
                                             |    akka {
@@ -89,6 +89,8 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
 
   var mainRoutes: MainRoutes = _
 
+  var accountHandler: AccountHandler = _
+
   private val username = "smanciot"
 
   private val firstName = Some("Stephane")
@@ -109,12 +111,13 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
         MockNotificationActor.props(), "notificationActor"
       )
     )
+    accountHandler = new AccountHandler(
+      actorSystem.actorOf(BaseAccountStateActor.props(notificationHandler, new MockGenerator), "baseAccountStateActor")
+    )
     mainRoutes = new MainRoutes(
       new HealthCheckService(),
       new AccountService(
-        new AccountHandler(
-          actorSystem.actorOf(BaseAccountStateActor.props(notificationHandler), "baseAccountStateActor")
-        ),
+        accountHandler,
         new SessionRefreshTokenHandler(
           actorSystem.actorOf(SessionRefreshTokenStateActor.props(), "sessionRefreshTokenStateActor")
         )
@@ -190,6 +193,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     }
     "work with matching email and password" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password, firstName, lastName)) ~> mainRoutes.routes
+      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(email, password)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Accepted
       }
@@ -230,6 +234,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     }
     "fail with unmatching email and password" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
+      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(email, "fake")) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.BadRequest
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
@@ -258,6 +263,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "work" in {
       var _headers: Seq[HttpHeader] = Seq.empty
       Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
+      accountHandler.handle(UpdatePassword(gsm, password, password, password)) // FIXME account may have been previously disabled
       Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {  // reset number of failures
         status shouldEqual StatusCodes.Accepted
         _headers = headers
@@ -272,6 +278,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "work" in {
       var _headers: Seq[HttpHeader] = Seq.empty
       Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
+      accountHandler.handle(UpdatePassword(gsm, password, password, password)) // FIXME account may have been previously disabled
       Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {  // reset number of failures
         status shouldEqual StatusCodes.Accepted
         _headers = headers
@@ -279,6 +286,32 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
       Post(s"/api/${Settings.Path}/signOut").withHeaders(extractCookies(_headers):_*) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.OK
 //FIXME        responseAs[Profile].status shouldEqual AccountStatus.Deleted
+      }
+    }
+  }
+
+  "SendVerificationCode" should {
+    "work" in {
+      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
+      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
+      Post(s"/api/${Settings.Path}/sendVerificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
+      }
+    }
+  }
+
+  "ResetPassword" should {
+    "work" in {
+      var _headers: Seq[HttpHeader] = Seq.empty
+      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
+      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
+      Post(s"/api/${Settings.Path}/sendVerificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {  // reset number of failures
+        status shouldEqual StatusCodes.Accepted
+        _headers = headers
+      }
+      Post(s"/api/${Settings.Path}/resetPassword", ResetPassword("code", password, password))
+        .withHeaders(extractCookies(_headers):_*)  ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
       }
     }
   }
@@ -299,13 +332,3 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     })
   }
 }
-/*
-case class SimpleHttpHeader(name: String, value: String) extends HttpHeader {
-
-  override def lowercaseName(): String = name.toLowerCase()
-
-  override def renderInResponses(): Boolean = false
-
-  override def renderInRequests(): Boolean = true
-}
-*/

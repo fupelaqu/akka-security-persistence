@@ -1,6 +1,7 @@
 package org.softnetwork.security.message
 
 import org.softnetwork.akka.message.{Event, CommandResult}
+import org.softnetwork.security.actors.{ActivationTokenWithUuid, VerificationCodeWithUuid}
 import org.softnetwork.security.model.Account
 
 /**
@@ -12,7 +13,11 @@ case class AccountCreated[T <: Account](account: T) extends Event with AccountCo
 
 case class AccountUpdated[T <: Account](account: T) extends Event with AccountCommandResult
 
-case class AccountConfirmed[T <: Account](account: T) extends Event with AccountCommandResult
+case class ActivationTokenEvent(activationToken: ActivationTokenWithUuid) extends Event
+
+case class RemoveActivationTokenEvent(activationToken: String) extends Event
+
+class AccountActivated[T <: Account](override val account: T) extends AccountUpdated[T](account)
 
 class AccountDeleted[T <: Account](override val account: T) extends  AccountUpdated[T](account)
 
@@ -23,3 +28,11 @@ class LoginSucceeded[T <: Account](override val account: T) extends AccountUpdat
 class LoginFailed[T <: Account](override val account: T) extends AccountUpdated[T](account)
 
 case object LogoutSucceeded extends AccountCommandResult
+
+case class VerificationCodeEvent(verificationCode: VerificationCodeWithUuid) extends Event
+
+case object VerificationCodeSent extends AccountCommandResult
+
+case class RemoveVerificationCodeEvent(verificationCode: String) extends Event
+
+case object PasswordReseted extends AccountCommandResult

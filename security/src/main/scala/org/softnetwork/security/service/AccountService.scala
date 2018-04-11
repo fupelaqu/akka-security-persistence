@@ -47,7 +47,7 @@ class AccountService(
 
   val route = {
     pathPrefix(Settings.Path){
-      signIn ~ login ~ logout ~ signOut
+      signIn ~ login ~ activate ~ logout ~ sendVerificationCode ~ resetPassword ~ signOut
     }
   }
 
@@ -58,6 +58,20 @@ class AccountService(
         run(signIn) match {
           case r: AccountCreated[_]       =>
             complete(HttpResponse(status = Created, entity = accountEntity(r.account)))
+          case error: AccountErrorMessage => accountError(error)
+          case _                          => complete(HttpResponse(BadRequest))
+        }
+      }
+    }
+  }
+
+  lazy val activate = path("activate") {
+    get {
+      entity(as[Activate]) { activate =>
+        // execute activate
+        run(activate) match {
+          case r: AccountActivated[_]       =>
+            complete(HttpResponse(status = OK, entity = accountEntity(r.account)))
           case error: AccountErrorMessage => accountError(error)
           case _                          => complete(HttpResponse(BadRequest))
         }
@@ -120,6 +134,38 @@ class AccountService(
               }
             case error: AccountErrorMessage => accountError(error)
             case _                          => complete(HttpResponse(BadRequest))
+          }
+        }
+      }
+    }
+  }
+
+  lazy val sendVerificationCode = path("sendVerificationCode") {
+    post {
+      entity(as[SendVerificationCode]) { verificationCode =>
+        run(verificationCode) match {
+          case _: VerificationCodeSent.type =>
+            // create a new anti csrf token
+            setNewCsrfToken(checkHeader) {
+              complete(HttpResponse(status = OK))
+            }
+          case error: AccountErrorMessage   => accountError(error)
+          case _                            => complete(HttpResponse(BadRequest))
+        }
+      }
+    }
+  }
+
+  lazy val resetPassword = path("resetPassword") {
+    // check anti CSRF token
+    randomTokenCsrfProtection(checkHeader) {
+      post {
+        entity(as[ResetPassword]) { reset =>
+          run(reset) match {
+            case _: PasswordReseted.type =>
+              complete(HttpResponse(status = OK))
+            case error: AccountErrorMessage => accountError(error)
+            case _ => complete(HttpResponse(BadRequest))
           }
         }
       }

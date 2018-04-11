@@ -52,12 +52,15 @@ object BaseAccount{
     if(!password.equals(confirmPassword))
       None
     else{
+      val principal = Principal(login.trim)
+      val status = if(principal.`type` == PrincipalType.Email)/* TODO Push notifications */ AccountStatus.Inactive else AccountStatus.Active
       Some(
         BaseAccount(
           credentials = sha512(password),
           firstName = firstName,
-          lastName = lastName
-        ).add(Principal(login.trim)).asInstanceOf[BaseAccount]
+          lastName = lastName,
+          status = status
+        ).add(principal).asInstanceOf[BaseAccount]
       )
     }
   }

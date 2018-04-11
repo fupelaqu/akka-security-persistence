@@ -13,7 +13,7 @@ trait Service[U <: Command, V <: CommandResult] {
 
   def handler: Handler[U, V]
 
-  val defaultAtMost = 1.second
+  val defaultAtMost = 10.second
 
   def run(command: U, atMost: Duration = defaultAtMost)(implicit c: ClassTag[V]): V = {
     handler.handle(command, atMost)

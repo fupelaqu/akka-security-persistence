@@ -4,13 +4,18 @@ import java.util.Date
 
 import akka.actor.ActorLogging
 import akka.persistence.{PersistentActor, RecoveryCompleted, SnapshotOffer}
+import mustache.Mustache
 import org.softnetwork.akka.message._
 import org.softnetwork.notification.handlers.NotificationHandler
+import org.softnetwork.notification.message.{MailSent, SendMail}
+import org.softnetwork.notification.model.Mail
+import org.softnetwork.security.config.Settings._
+import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message._
-import org.softnetwork.security.model.{AccountStatus, VerificationToken, Account, Password}
+import org.softnetwork.security.model._
 import Password._
 
-import scala.util.{Success, Try}
+import scala.io.Source
 
 /**
   * Created by smanciot on 31/03/2018.
@@ -18,6 +23,8 @@ import scala.util.{Success, Try}
 trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging {
 
   def notificationHandler(): NotificationHandler
+
+  def generator(): Generator
 
   var state: AccountState[T]
 
@@ -39,38 +46,114 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 
   def createAccount(cmd: SignIn): Option[T]
 
-  def sendConfirmation(account: T): Try[Boolean] = Success(false) //TODO Notifications
+  def sendActivation(account: T, activationToken: VerificationToken): Boolean = {
+    account.email match {
+      case Some(email) =>
+        val activationUrl = s"$BaseUrl/$Path/activate/${activationToken.token}"
+        val template = new Mustache(
+          Source.fromFile(
+            Thread.currentThread().getContextClassLoader.getResource("notification/activation.mustache").getPath
+          )
+        )
+        val body = template.render(Map("account" -> account, "activationUrl" -> activationUrl))
+        notificationHandler().handle(
+          SendMail(
+            Mail(
+              (MailFrom, "nobody"),
+              Seq(email),
+              Seq(),
+              Seq(),
+              "Activation",
+              body,
+              Some(body)
+            )
+          )
+        ) match {
+          case _: MailSent.type => true
+          case _                => false
+        }
+      case _          => false // TODO push notification
+    }
+  }
+
+  def sendVerificationCode(account: T, verificationCode: VerificationCode): Boolean = {
+    account.email match {
+      case Some(email) =>
+        val template = new Mustache(
+          Source.fromFile(
+            Thread.currentThread().getContextClassLoader.getResource("notification/reset_password.mustache").getPath
+          )
+        )
+        val body = template.render(Map("account" -> account, "code" -> verificationCode.code))
+        notificationHandler().handle(
+          SendMail(
+            Mail(
+              (MailFrom, "nobody"),
+              Seq(email),
+              Seq(),
+              Seq(),
+              "Reset Password",
+              body,
+              Some(body)
+            )
+          )
+        ) match {
+          case _: MailSent.type => true
+          case _                => false
+        }
+      case _           => false // TODO push notification
+    }
+  }
 
   def updateState(event: Event): Unit = {
 
     event match {
 
-      case evt: AccountCreated[T] =>
+      case evt: AccountCreated[T]     =>
         val account = evt.account
         import account._
-        state = state.copy(accounts = state.accounts.updated(uuid, account))
+        state = state.copy(accounts = state.accounts + (uuid->account))
         secondaryPrincipals.foreach((principal) =>
           state = state.copy(principals = state.principals.updated(principal.value, uuid))
         )
-        val verificationToken = VerificationToken(account.primaryPrincipal.value)
-        state = state.copy(
-          verificationTokens = state.verificationTokens.updated(
-            verificationToken.token,
-            VerificationTokenWithUuid(
-              verificationToken,
-              uuid,
-              sendConfirmation(account).getOrElse(false)
-            )
-          )
-        )
 
       /** secondary principals should not be updated if they have been defined **/
-      case evt: AccountUpdated[T] =>
+      case evt: AccountUpdated[T]     =>
         val account = evt.account
         import account._
         state = state.copy(accounts = state.accounts.updated(uuid, account))
 
-      case _                      =>
+      case evt: ActivationTokenEvent =>
+        import evt._
+        state = state.copy(
+          activationTokens = state.activationTokens.updated(
+            activationToken.verificationToken.token,
+            activationToken
+          )
+        )
+
+      case evt: RemoveActivationTokenEvent =>
+        import evt._
+        state = state.copy(
+          activationTokens = state.activationTokens - activationToken
+        )
+
+      case evt: VerificationCodeEvent =>
+        import evt._
+        state = state.copy(
+          verificationCodes = state.verificationCodes.updated(
+            verificationCode.verificationCode.code,
+            verificationCode
+          )
+        )
+
+      case evt: RemoveVerificationCodeEvent =>
+        import evt._
+        state = state.copy(
+          verificationCodes = state.verificationCodes - verificationCode
+        )
+
+      case _                          =>
     }
   }
 
@@ -99,16 +182,34 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
               case _       => false
             }
             if(!exists){
-              persist(
-                AccountCreated(
-                  account
-                    .copyWithStatus(AccountStatus.Inactive)
-                    .addAll(secondaryPrincipals).asInstanceOf[T]
-                )
-              ) { event =>
+              persist(AccountCreated(account)) { event =>
                 updateState(event)
                 context.system.eventStream.publish(event)
-                sender() ! event
+
+                val activationRequired = status == AccountStatus.Inactive
+                var notified = false
+                if(activationRequired) { // an activation is required
+                  val activationToken = generator().generateToken(
+                    account.primaryPrincipal.value,
+                    ActivationTokenExpirationTime
+                  )
+                  notified = sendActivation(account, activationToken)
+                  persist(
+                    ActivationTokenEvent(
+                      ActivationTokenWithUuid(
+                        activationToken,
+                        uuid,
+                        notified
+                      )
+                    )
+                  ) { event2 =>
+                    updateState(event2)
+                    context.system.eventStream.publish(event2)
+                  }
+                }
+
+                sender() ! {if(activationRequired && ! notified) UndeliveredActivationToken else event}
+
                 performSnapshotIfRequired()
               }
             }
@@ -118,12 +219,33 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         }
       }
 
-    /** handle Confirm **/
-    case cmd: Confirm =>
-      state.verificationTokens.get(cmd.token) match {
-        case Some(s) =>
-          if(s.check) {
-
+    /** handle account activation **/
+    case cmd: Activate =>
+      import cmd._
+      state.activationTokens.get(token) match {
+        case Some(activation) =>
+          if(activation.check) {
+            state.accounts.get(activation.uuid) match {
+              case Some(account) if account.status == AccountStatus.Inactive =>
+                persist(
+                  new AccountActivated(
+                    account.copyWithStatus(AccountStatus.Active)
+                    .addAll(account.secondaryPrincipals)
+                    .asInstanceOf[T]
+                  )
+                ){event =>
+                  updateState(event)
+                  context.system.eventStream.publish(event)
+                  persistAsync(RemoveActivationTokenEvent(token)){event2 =>
+                    updateState(event2)
+                    context.system.eventStream.publish(event2)
+                  }
+                  sender() ! event
+                  performSnapshotIfRequired()
+                }
+              case None                                                      => sender() ! AccountNotFound
+              case _                                                         => sender() ! IllegalStateError
+            }
           }
           else
             sender() ! TokenExpired
@@ -134,9 +256,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
     case cmd: Login   =>
       import cmd._
       lookupAccount(login) match {
-        case Some(account) =>
+        case Some(account) if account.status == AccountStatus.Active =>
           if(checkPassword(account.credentials, cmd.password)){
-            // TODO check account state
             persist(
               new LoginSucceeded(
                 account
@@ -175,7 +296,75 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
               performSnapshotIfRequired()
             }
           }
-        case _       => sender() ! LoginAndPasswordNotMatched //WrongLogin
+        case None                                                 => sender() ! LoginAndPasswordNotMatched //WrongLogin
+        case _                                                    => sender() ! IllegalStateError
+      }
+
+    /** handle send verification code **/
+    case cmd: SendVerificationCode =>
+      import cmd._
+      if(EmailValidator.check(principal) || GsmValidator.check(principal)){
+        lookupAccount(principal) match {
+          case Some(account) =>
+            val verificationCode = generator().generatePinCode(VerificationCodeSize, VerificationCodeExpirationTime)
+            persist(
+              VerificationCodeEvent(
+                VerificationCodeWithUuid(
+                  verificationCode,
+                  account.uuid,
+                  sendVerificationCode(account, verificationCode)
+                )
+              )
+            ) {event =>
+              updateState(event)
+              context.system.eventStream.publish(event)
+              sender() ! {if(event.verificationCode.notified) VerificationCodeSent else UndeliveredVerificationCode}
+            }
+          case _             => sender() ! AccountNotFound
+        }
+      }
+      else{
+        sender() ! InvalidPrincipal
+      }
+
+    case cmd: ResetPassword =>
+      import cmd._
+      if(!newPassword.equals(confirmedPassword)){
+        sender() ! PasswordsNotMatched
+      }
+      else{
+        state.verificationCodes.get(code) match {
+          case Some(verification) =>
+            if(verification.check){
+              state.accounts.get(verification.uuid) match {
+                case Some(account) =>
+                  persist(
+                    new PasswordUpdated(
+                      account
+                        .copyWithCredentials(sha512(newPassword))
+                        .copyWithStatus(AccountStatus.Active) //TODO check this
+                        .copyWithNbLoginFailures(0)
+                        .addAll(account.secondaryPrincipals)
+                        .asInstanceOf[T]
+                    )
+                  ) {event =>
+                    updateState(event)
+                    context.system.eventStream.publish(event)
+                    persistAsync(RemoveVerificationCodeEvent(code)){event2 =>
+                      updateState(event2)
+                      context.system.eventStream.publish(event2)
+                    }
+                    sender() ! PasswordReseted
+                    performSnapshotIfRequired()
+                  }
+                case _             => sender() ! AccountNotFound
+              }
+            }
+            else {
+              sender() ! CodeExpired
+            }
+          case _                  => sender() ! CodeNotFound
+        }
       }
 
     /** handle update password **/
@@ -193,8 +382,11 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                 new PasswordUpdated(
                   account
                     .copyWithCredentials(sha512(newPassword))
+                    .copyWithStatus(AccountStatus.Active)
+                    .copyWithNbLoginFailures(0)
                     .addAll(account.secondaryPrincipals)
-                    .asInstanceOf[T]                )
+                    .asInstanceOf[T]
+                )
               ) {event =>
                 updateState(event)
                 context.system.eventStream.publish(event)
@@ -242,9 +434,14 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 case class AccountState[T <: Account](
    accounts: Map[String, T] = Map[String, T](),
    principals: Map[String, String] = Map.empty,
-   verificationTokens: Map[String, VerificationTokenWithUuid] = Map.empty
+   activationTokens: Map[String, ActivationTokenWithUuid] = Map.empty,
+   verificationCodes: Map[String, VerificationCodeWithUuid] = Map.empty
 )
 
-case class VerificationTokenWithUuid(verificationToken: VerificationToken, uuid: String, notified: Boolean = false){
+case class ActivationTokenWithUuid(verificationToken: VerificationToken, uuid: String, notified: Boolean = false){
   def check: Boolean = verificationToken.expirationDate >= new Date().getTime
+}
+
+case class VerificationCodeWithUuid(verificationCode: VerificationCode, uuid: String, notified: Boolean = false){
+  def check: Boolean = verificationCode.expirationDate >= new Date().getTime
 }

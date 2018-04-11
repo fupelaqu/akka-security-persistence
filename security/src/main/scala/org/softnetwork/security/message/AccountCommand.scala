@@ -21,6 +21,10 @@ case class Login(login: String, password: String, refreshable: Boolean = false) 
 
 case object Logout extends AccountCommand
 
+case class SendVerificationCode(principal: String) extends AccountCommand
+
+case class ResetPassword(code: String, newPassword: String, confirmedPassword: String) extends AccountCommand
+
 case class UpdatePassword(login: String, oldPassword: String, newPassword: String, confirmedPassword: String) extends AccountCommand
 
-case class Confirm(token: String) extends AccountCommand
+case class Activate(token: String) extends AccountCommand

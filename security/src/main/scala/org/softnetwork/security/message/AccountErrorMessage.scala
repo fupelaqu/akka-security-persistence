@@ -17,8 +17,20 @@ case object PasswordsNotMatched extends AccountErrorMessage("PasswordsNotMatched
 
 case object LoginAndPasswordNotMatched extends AccountErrorMessage("LoginAndPasswordNotMatched")
 
+case object UndeliveredActivationToken extends AccountErrorMessage("UndeliveredActivationToken")
+
 case object TokenNotFound extends AccountErrorMessage("TokenNotFound")
 
 case object TokenExpired extends AccountErrorMessage("TokenExpired")
 
 case object AccountNotFound extends AccountErrorMessage("AccountNotFound")
+
+case object IllegalStateError extends AccountErrorMessage("IllegalStateError")
+
+case object InvalidPrincipal extends AccountErrorMessage("InvalidPrincipal")
+
+case object UndeliveredVerificationCode extends AccountErrorMessage("UndeliveredVerificationCode")
+
+case object CodeNotFound extends AccountErrorMessage("TokenNotFound")
+
+case object CodeExpired extends AccountErrorMessage("TokenNotFound")
