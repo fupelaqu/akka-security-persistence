@@ -306,7 +306,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
       Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
       Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/sendVerificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {  // reset number of failures
-        status shouldEqual StatusCodes.Accepted
+        status shouldEqual StatusCodes.OK
         _headers = headers
       }
       Post(s"/api/${Settings.Path}/resetPassword", ResetPassword("code", password, password))
