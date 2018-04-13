@@ -210,6 +210,7 @@ libraryDependencies in ThisBuild ++=
       Seq(
         "commons-codec" % "commons-codec" % "1.8",
         "org.apache.commons" % "commons-email" % "1.5",
+        "org.passay" % "passay" % "1.3.1",
         "com.chuusai" %% "shapeless" % "2.3.3",
         "org.apache.curator" % "curator-test" % "2.9.0" % "test"
       )

@@ -4,8 +4,11 @@ package org.softnetwork.security.config
   * Created by smanciot on 08/04/2018.
   */
 import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.scalalogging.StrictLogging
+import configs.Configs
+import Password._
 
-object Settings {
+object Settings extends StrictLogging {
 
   lazy val config: Config = ConfigFactory.load()
 
@@ -21,4 +24,12 @@ object Settings {
 
   val VerificationCodeExpirationTime = config.getInt("security.verification.code.expirationTime")
 
+  def passwordRules(config: Config = config) = Configs[PasswordRules].get(config, "security.password").toEither match{
+    case Left(configError)  =>
+      logger.error(s"Something went wrong with the provided arguments $configError")
+      PasswordRules()
+    case Right(rules) => rules
+  }
+
 }
+

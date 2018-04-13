@@ -29,6 +29,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 
   var state: AccountState[T]
 
+  val rules = passwordRules()
+
   /** number of events received before generating a snapshot - should be configurable **/
   def snapshotInterval: Long
 
@@ -193,6 +195,9 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       import cmd._
       if(!password.equals(confirmPassword)){
         sender() ! PasswordsNotMatched
+      }
+      else if(rules.validate(password).isLeft){
+        sender() ! InvalidPassword
       }
       else{
         createAccount(cmd) match {
@@ -367,6 +372,9 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       if(!newPassword.equals(confirmedPassword)){
         sender() ! PasswordsNotMatched
       }
+      else if(rules.validate(newPassword).isLeft){
+        sender() ! InvalidPassword
+      }
       else{
         state.verificationCodes.get(md5Hash(code)) match {
           case Some(verification) =>
@@ -407,6 +415,9 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       import cmd._
       if(!newPassword.equals(confirmedPassword)){
         sender() ! PasswordsNotMatched
+      }
+      else if(rules.validate(newPassword).isLeft){
+        sender() ! InvalidPassword
       }
       else{
         lookupAccount(login) match {

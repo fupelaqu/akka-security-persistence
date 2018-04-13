@@ -25,6 +25,8 @@ case object TokenExpired extends AccountErrorMessage("TokenExpired")
 
 case object AccountNotFound extends AccountErrorMessage("AccountNotFound")
 
+case object InvalidPassword extends AccountErrorMessage("InvalidPassword")
+
 case object IllegalStateError extends AccountErrorMessage("IllegalStateError")
 
 case object InvalidPrincipal extends AccountErrorMessage("InvalidPrincipal")
