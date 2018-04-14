@@ -1,9 +1,6 @@
 package org.softnetwork.security.model
 
-import java.security.{MessageDigest, SecureRandom}
-import java.util.{Calendar, Date, UUID}
-
-import org.apache.commons.codec.digest.Sha2Crypt
+import java.util.{Date, UUID}
 
 /**
   * Created by smanciot on 25/03/2018.
@@ -14,6 +11,9 @@ trait Account extends Principals {
   def lastLogin: Option[Date]
   def nbLoginFailures: Int
   def status: AccountStatus.Value
+
+  def createdDate: Date
+  def updatedDate: Date
 
   final override val primaryPrincipal = Principal(PrincipalType.Uuid, uuid)
   def email: Option[String] = get(PrincipalType.Email).map(_.value)
@@ -29,6 +29,7 @@ trait Account extends Principals {
   def copyWithStatus(status: AccountStatus.Value): Account
   def copyWithActivationToken(activationToken: Option[VerificationToken]): Account
   def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account
+  def copyWithUpdatedDate(updatedDate: Date): Account
 
   def view: AccountInfo
 }
@@ -36,6 +37,8 @@ trait Account extends Principals {
 trait AccountInfo {
   def lastLogin: Option[Date]
   def status: AccountStatus.Value
+  def createdDate: Date
+  def updatedDate: Date
 }
 
 object AccountStatus extends Enumeration {
@@ -50,42 +53,7 @@ object AccountStatus extends Enumeration {
   val Active = Value(2, "Active")
 }
 
-object Hash {
 
-  def md5Hash(text: String): String = MessageDigest.getInstance("MD5").digest(text.getBytes).map(0xFF & _).map { "%02x".format(_) }.foldLeft(""){_ + _}
-
-}
-
-sealed trait Encryption {
-  def encrypt(clearText: String): String
-
-  def checkEncryption(crypted: String, clearText: String): Boolean
-}
-
-object Sha512Encryption extends Encryption {
-
-  def encrypt(clearText: String) = Sha2Crypt.sha512Crypt(clearText.getBytes("UTF-8").clone())
-
-  def isEncrypted(crypted: String)  = crypted.startsWith("$6$")
-
-  def checkEncryption(crypted: String, clearText: String) = {
-    if(!isEncrypted(crypted))
-      false
-    else {
-      val offset2ndDolar = crypted.indexOf('$', 1)
-      if (offset2ndDolar < 0)
-        false
-      else {
-        val offset3ndDolar = crypted.indexOf('$', offset2ndDolar + 1)
-        if (offset3ndDolar < 0)
-          false
-        else {
-          crypted.equals(Sha2Crypt.sha512Crypt(clearText.getBytes("UTF-8").clone(), crypted.substring(0, offset3ndDolar + 1)))
-        }
-      }
-    }
-  }
-}
 
 /**
   * A collection of all principals associated with a corresponding Subject.
@@ -171,39 +139,3 @@ object PrincipalType extends Enumeration {
   val Gsm = Value(2, "Gsm")
   val Username = Value(3, "Username")
 }
-
-case class VerificationToken(token: String, expirationDate: Long)
-
-trait ExpirationDate {
-
-  def compute(expiryTimeInMinutes: Int) = {
-    val cal = Calendar.getInstance()
-    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
-    cal.getTime
-  }
-
-}
-
-object VerificationToken extends ExpirationDate {
-
-  def apply(login: String, expiryTimeInMinutes: Int): VerificationToken = {
-    val cal = Calendar.getInstance()
-    cal.add(Calendar.MINUTE, expiryTimeInMinutes)
-    VerificationToken(BearerTokenGenerator.generateSHAToken(login), compute(expiryTimeInMinutes).getTime)
-  }
-
-}
-
-case class VerificationCode(code: String, expirationDate: Long)
-
-object VerificationCode extends ExpirationDate {
-
-  def apply(pinSize: Int, expiryTimeInMinutes: Int): VerificationCode = {
-    VerificationCode(
-      s"%0${pinSize}d".format(new SecureRandom().nextInt(math.pow(10, pinSize).toInt)),
-      compute(expiryTimeInMinutes).getTime
-    )
-  }
-
-}
-

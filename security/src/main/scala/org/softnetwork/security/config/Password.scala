@@ -38,14 +38,14 @@ object Password {
       case _       => None
     })
 
-    def validate(password: String): Either[Seq[RuleResultDetail], Boolean] = {
+    def validate(password: String): Either[Seq[String], Boolean] = {
       import scala.collection.JavaConversions._
       val validator = new PasswordValidator(rules: _*)
       val result = validator.validate(new PasswordData(password))
       if (result.isValid)
         Right(true)
       else
-        Left(result.getDetails)
+        Left(result.getDetails.map(_.getErrorCode))
     }
   }
 

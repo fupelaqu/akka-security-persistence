@@ -15,6 +15,8 @@ case class BaseAccount(
   override val status: AccountStatus.Value = AccountStatus.Inactive,
   override val activationToken: Option[VerificationToken] = None,
   override val verificationCode: Option[VerificationCode] = None,
+  override val createdDate: Date = new Date(),
+  override val updatedDate: Date = new Date(),
   firstName: Option[String] = None,
   lastName: Option[String] = None
 )extends Account {
@@ -29,14 +31,18 @@ case class BaseAccount(
 
   override def copyWithStatus(status: AccountStatus.Value): Account =
     copy(status = status)
-  
+
   override def copyWithActivationToken(activationToken: Option[VerificationToken]): Account =
     copy(activationToken = activationToken)
 
   override def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account =
     copy(verificationCode = verificationCode)
 
+  override def copyWithUpdatedDate(updatedDate: Date): Account =
+    copy(updatedDate = updatedDate)
+
   override def view = BaseAccountInfo(this)
+
 }
 
 /** Profile companion object **/
@@ -78,6 +84,8 @@ object BaseAccount{
 class BaseAccountInfo(
   override val lastLogin: Option[Date] = None,
   override val status: AccountStatus.Value = AccountStatus.Inactive,
+  override val createdDate: Date = new Date(),
+  override val updatedDate: Date = new Date(),
   val firstName: Option[String] = None,
   val lastName: Option[String] = None
 ) extends AccountInfo
@@ -86,6 +94,8 @@ object BaseAccountInfo{
   def apply(account: BaseAccount): BaseAccountInfo = new BaseAccountInfo(
     lastLogin = account.lastLogin,
     status    = account.status,
+    createdDate = account.createdDate,
+    updatedDate = account.updatedDate,
     firstName = account.firstName,
     lastName  = account.lastName
   )

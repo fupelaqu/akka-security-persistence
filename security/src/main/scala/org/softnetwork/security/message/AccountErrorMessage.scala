@@ -25,7 +25,7 @@ case object TokenExpired extends AccountErrorMessage("TokenExpired")
 
 case object AccountNotFound extends AccountErrorMessage("AccountNotFound")
 
-case object InvalidPassword extends AccountErrorMessage("InvalidPassword")
+case class InvalidPassword(errors: Seq[String] = Seq.empty) extends AccountErrorMessage(errors.mkString(","))
 
 case object IllegalStateError extends AccountErrorMessage("IllegalStateError")
 

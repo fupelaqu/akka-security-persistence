@@ -196,54 +196,55 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       if(!password.equals(confirmPassword)){
         sender() ! PasswordsNotMatched
       }
-      else if(rules.validate(password).isLeft){
-        sender() ! InvalidPassword
-      }
       else{
-        createAccount(cmd) match {
-          case Some(account) =>
-            import account._
-            val exists = secondaryPrincipals.find(
-              (principal) => state.principals.contains(principal.value)
-            ) match {
-              case Some(_) => true
-              case _       => false
-            }
-            if(!exists){
-              persist(AccountCreated(account)) { event =>
-                updateState(event)
-                context.system.eventStream.publish(event)
+        rules.validate(password) match {
+          case Left(errorCodes)          => sender() ! InvalidPassword(errorCodes)
+          case Right(success) if success =>
+            createAccount(cmd) match {
+              case Some(account) =>
+                import account._
+                val exists = secondaryPrincipals.find(
+                  (principal) => state.principals.contains(principal.value)
+                ) match {
+                  case Some(_) => true
+                  case _       => false
+                }
+                if(!exists){
+                  persist(AccountCreated(account)) { event =>
+                    updateState(event)
+                    context.system.eventStream.publish(event)
 
-                val activationRequired = status == AccountStatus.Inactive
-                var notified = false
-                if(activationRequired) { // an activation is required
-                  val activationToken = generator().generateToken(
-                    account.primaryPrincipal.value,
-                    ActivationTokenExpirationTime
-                  )
-                  notified = sendActivation(account, activationToken)
-                  persist(
-                    ActivationTokenEvent(
-                      ActivationTokenWithUuid(
-                        activationToken,
-                        uuid,
-                        notified
+                    val activationRequired = status == AccountStatus.Inactive
+                    var notified = false
+                    if(activationRequired) { // an activation is required
+                    val activationToken = generator().generateToken(
+                        account.primaryPrincipal.value,
+                        ActivationTokenExpirationTime
                       )
-                    )
-                  ) { event2 =>
-                    updateState(event2)
-                    context.system.eventStream.publish(event2)
+                      notified = sendActivation(account, activationToken)
+                      persist(
+                        ActivationTokenEvent(
+                          ActivationTokenWithUuid(
+                            activationToken,
+                            uuid,
+                            notified
+                          )
+                        )
+                      ) { event2 =>
+                        updateState(event2)
+                        context.system.eventStream.publish(event2)
+                      }
+                    }
+
+                    sender() ! {if(activationRequired && ! notified) UndeliveredActivationToken else event}
+
+                    performSnapshotIfRequired()
                   }
                 }
-
-                sender() ! {if(activationRequired && ! notified) UndeliveredActivationToken else event}
-
-                performSnapshotIfRequired()
-              }
+                else
+                  sender() ! LoginAlreadyExists
+              case _             => sender() ! LoginUnaccepted
             }
-            else
-              sender() ! LoginAlreadyExists
-          case _             => sender() ! LoginUnaccepted
         }
       }
 
@@ -372,41 +373,42 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       if(!newPassword.equals(confirmedPassword)){
         sender() ! PasswordsNotMatched
       }
-      else if(rules.validate(newPassword).isLeft){
-        sender() ! InvalidPassword
-      }
       else{
-        state.verificationCodes.get(md5Hash(code)) match {
-          case Some(verification) =>
-            if(verification.check){
-              state.accounts.get(verification.uuid) match {
-                case Some(account) =>
-                  persist(
-                    new PasswordUpdated(
-                      account
-                        .copyWithCredentials(encrypt(newPassword))
-                        .copyWithStatus(AccountStatus.Active) //TODO check this
-                        .copyWithNbLoginFailures(0)
-                        .addAll(account.secondaryPrincipals)
-                        .asInstanceOf[T]
-                    )
-                  ) {event =>
-                    updateState(event)
-                    context.system.eventStream.publish(event)
-                    persistAsync(RemoveVerificationCodeEvent(code)){event2 =>
-                      updateState(event2)
-                      context.system.eventStream.publish(event2)
-                    }
-                    sender() ! PasswordReseted
-                    performSnapshotIfRequired()
+        rules.validate(newPassword) match {
+          case Left(errorCodes)          => sender() ! InvalidPassword(errorCodes)
+          case Right(success) if success =>
+            state.verificationCodes.get(md5Hash(code)) match {
+              case Some(verification) =>
+                if(verification.check){
+                  state.accounts.get(verification.uuid) match {
+                    case Some(account) =>
+                      persist(
+                        new PasswordUpdated(
+                          account
+                            .copyWithCredentials(encrypt(newPassword))
+                            .copyWithStatus(AccountStatus.Active) //TODO check this
+                            .copyWithNbLoginFailures(0)
+                            .addAll(account.secondaryPrincipals)
+                            .asInstanceOf[T]
+                        )
+                      ) {event =>
+                        updateState(event)
+                        context.system.eventStream.publish(event)
+                        persistAsync(RemoveVerificationCodeEvent(code)){event2 =>
+                          updateState(event2)
+                          context.system.eventStream.publish(event2)
+                        }
+                        sender() ! PasswordReseted
+                        performSnapshotIfRequired()
+                      }
+                    case _             => sender() ! AccountNotFound
                   }
-                case _             => sender() ! AccountNotFound
-              }
+                }
+                else {
+                  sender() ! CodeExpired
+                }
+              case _                  => sender() ! CodeNotFound
             }
-            else {
-              sender() ! CodeExpired
-            }
-          case _                  => sender() ! CodeNotFound
         }
       }
 
@@ -416,34 +418,35 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       if(!newPassword.equals(confirmedPassword)){
         sender() ! PasswordsNotMatched
       }
-      else if(rules.validate(newPassword).isLeft){
-        sender() ! InvalidPassword
-      }
       else{
-        lookupAccount(login) match {
-          case Some(account) =>
-            import account._
-            if(checkEncryption(credentials, oldPassword)){
-              persist(
-                new PasswordUpdated(
-                  account
-                    .copyWithCredentials(encrypt(newPassword))
-                    .copyWithStatus(AccountStatus.Active)
-                    .copyWithNbLoginFailures(0)
-                    .addAll(account.secondaryPrincipals)
-                    .asInstanceOf[T]
-                )
-              ) {event =>
-                updateState(event)
-                context.system.eventStream.publish(event)
-                sender() ! event
-                performSnapshotIfRequired()
-              }
+        rules.validate(newPassword) match {
+          case Left(errorCodes)          => sender() ! InvalidPassword(errorCodes)
+          case Right(success) if success =>
+            lookupAccount(login) match {
+              case Some(account) =>
+                import account._
+                if(checkEncryption(credentials, oldPassword)){
+                  persist(
+                    new PasswordUpdated(
+                      account
+                        .copyWithCredentials(encrypt(newPassword))
+                        .copyWithStatus(AccountStatus.Active)
+                        .copyWithNbLoginFailures(0)
+                        .addAll(account.secondaryPrincipals)
+                        .asInstanceOf[T]
+                    )
+                  ) {event =>
+                    updateState(event)
+                    context.system.eventStream.publish(event)
+                    sender() ! event
+                    performSnapshotIfRequired()
+                  }
+                }
+                else {
+                  sender() ! LoginAndPasswordNotMatched
+                }
+              case _       => sender() ! LoginUnaccepted
             }
-            else {
-              sender() ! LoginAndPasswordNotMatched
-            }
-          case _       => sender() ! LoginUnaccepted
         }
       }
 
