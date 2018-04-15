@@ -53,8 +53,6 @@ object AccountStatus extends Enumeration {
   val Active = Value(2, "Active")
 }
 
-
-
 /**
   * A collection of all principals associated with a corresponding Subject.
   * A principal is just a security term for an identifying attribute, such as

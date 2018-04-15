@@ -7,6 +7,8 @@ import org.softnetwork.akka.message.ErrorMessage
   */
 class NotificationErrorMessage (override val message: String) extends ErrorMessage(message) with NotificationCommandResult
 
-case object MailNotDelivered extends NotificationErrorMessage("MailNotDelivered")
+case class NotificationUndelivered(uuid: String) extends NotificationErrorMessage("NotificationNotDelivered")
 
-case object NotificationNotDelivered extends NotificationErrorMessage("NotificationNotDelivered")
+case class NotificationRejected(uuid: String) extends NotificationErrorMessage("NotificationRejected")
+
+case object NotificationNotFound extends NotificationErrorMessage("NotificationNotFound")

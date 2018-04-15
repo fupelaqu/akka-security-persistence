@@ -1,13 +1,13 @@
 package org.softnetwork.security.actors
 
-import java.util.Date
+import java.util.{UUID, Date}
 
 import akka.actor.ActorLogging
 import akka.persistence.{PersistentActor, RecoveryCompleted, SnapshotOffer}
 import mustache.Mustache
 import org.softnetwork.akka.message._
 import org.softnetwork.notification.handlers.NotificationHandler
-import org.softnetwork.notification.message.{MailSent, SendMail}
+import org.softnetwork.notification.message._
 import org.softnetwork.notification.model.Mail
 import org.softnetwork.security.config.Settings._
 import org.softnetwork.security.handlers.Generator
@@ -59,10 +59,11 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
           )
         )
         val body = template.render(Map("account" -> account, "activationUrl" -> activationUrl))
+        val uuid = UUID.randomUUID().toString
         notificationHandler().handle(
-          SendMail(
+          SendNotification(
             Mail(
-              (MailFrom, "nobody"),
+              (MailFrom, Some("nobody")),
               Seq(email),
               Seq(),
               Seq(),
@@ -72,8 +73,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
             )
           )
         ) match {
-          case _: MailSent.type => true
-          case _                => false
+          case _: NotificationSent => true
+          case _                   => false
         }
       case _          => false // TODO push notification
     }
@@ -88,10 +89,11 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
           )
         )
         val body = template.render(Map("account" -> account, "code" -> verificationCode.code))
+        val uuid = UUID.randomUUID().toString
         notificationHandler().handle(
-          SendMail(
+          SendNotification(
             Mail(
-              (MailFrom, "nobody"),
+              (MailFrom, Some("nobody")),
               Seq(email),
               Seq(),
               Seq(),
@@ -101,8 +103,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
             )
           )
         ) match {
-          case _: MailSent.type => true
-          case _                => false
+          case _: NotificationSent => true
+          case _                   => false
         }
       case _           => false // TODO push notification
     }
