@@ -14,6 +14,8 @@ case class NotificationAdded(uuid: String) extends NotificationCommandResult
 
 case object NotificationRemoved extends NotificationCommandResult
 
+case class NotificationRemovedEvent(uuid: String) extends Event
+
 case class NotificationSent(uuid: String) extends NotificationCommandResult
 
 case class NotificationDelivered(uuid: String) extends NotificationCommandResult

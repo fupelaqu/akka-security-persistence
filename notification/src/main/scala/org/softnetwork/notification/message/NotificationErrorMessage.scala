@@ -12,3 +12,5 @@ case class NotificationUndelivered(uuid: String) extends NotificationErrorMessag
 case class NotificationRejected(uuid: String) extends NotificationErrorMessage("NotificationRejected")
 
 case object NotificationNotFound extends NotificationErrorMessage("NotificationNotFound")
+
+case object NotificationMaxTriesReached extends NotificationErrorMessage("NotificationMaxTriesReached")

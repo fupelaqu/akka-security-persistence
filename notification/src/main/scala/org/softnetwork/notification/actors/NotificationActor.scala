@@ -30,9 +30,16 @@ class NotificationActor extends PersistentActor with ActorLogging {
       case evt: NotificationRecordedEvent[Notification] =>
         import evt._
         state = state.copy(notifications = state.notifications.updated(uuid, notification))
+
+      case evt: NotificationRemovedEvent                =>
+        import evt._
+        state = state.copy(notifications = state.notifications - uuid)
+
       case _                                            =>
     }
   }
+
+  def generateUUID(notification: Notification): String = UUID.randomUUID().toString
 
   override def receiveRecover: Receive = {
     case e: Event                                      => updateState(e)
@@ -41,35 +48,122 @@ class NotificationActor extends PersistentActor with ActorLogging {
   }
 
   override def receiveCommand: Receive = {
-    case cmd: SendNotification[Notification] =>
+
+    case cmd: AddNotification[Notification] =>
       import cmd._
-      val uuid = UUID.randomUUID().toString
-      val ack = notification match {
-        case mail: Mail => mailProvider.send(mail)
-        case sms: SMS   => smsProvider.send(sms)
-        case _          => NotificationAck(None, NotificationStatus.Pending, new Date())
-      }
+      val uuid = generateUUID(notification)
       persist(
         NotificationRecordedEvent(
           uuid,
           notification
             .incNbTries()
-            .copyWithAck(ack)
         )
       ) {event =>
         updateState(event)
         context.system.eventStream.publish(event)
-        ack.status match {
-          case NotificationStatus.Rejected  => sender() ! NotificationRejected(uuid)
-          case NotificationStatus.Sent      => sender() ! NotificationSent(uuid)
-          case NotificationStatus.Delivered => sender() ! NotificationDelivered(uuid)
-          case _                            => sender() ! NotificationUndelivered(uuid)
-        }
+        sender() ! NotificationAdded(uuid)
         performSnapshotIfRequired()
+      }
+
+    case cmd: RemoveNotification             =>
+      import cmd._
+      persist(
+        NotificationRemovedEvent(uuid)
+      ) {event =>
+        updateState(event)
+        context.system.eventStream.publish(event)
+        sender() ! NotificationRemoved
+        performSnapshotIfRequired()
+      }
+
+    case cmd: SendNotification[Notification] =>
+      import cmd._
+      sendNotification(generateUUID(notification), notification)
+
+    case cmd: ResendNotification =>
+      import cmd._
+      state.notifications.get(uuid) match {
+        case Some(notification) =>
+          import notification._
+          if(maxTries > 0 && nbTries > maxTries){
+            sender() ! NotificationMaxTriesReached
+          }
+          else{
+            sendNotification(uuid, notification)
+          }
+        case _                  => sender() ! NotificationNotFound
+      }
+
+    case cmd: GetNotificationStatus =>
+      import cmd._
+      state.notifications.get(uuid) match {
+        case Some(notification) =>
+          import notification._
+          status match {
+            case NotificationStatus.Delivered => sender() ! NotificationDelivered
+            case NotificationStatus.Rejected  => sender() ! NotificationRejected
+            case _                            => ack(uuid, notification)
+          }
+        case _                  => sender() ! NotificationNotFound
       }
 
     /** no handlers **/
     case _             => sender() ! new NotificationErrorMessage("UnknownCommand")
+  }
+
+  def ack(uuid: String, notification: Notification) = {
+    import notification._
+    val ack = ackUuid match {
+      case Some(s) =>
+        notification match {
+            case mail: Mail => mailProvider.ack(s, status)
+            case sms: SMS   => smsProvider.ack(s, status)
+            case _          => NotificationAck(Some(s), status, new Date())
+        }
+      case _       => NotificationAck(None, status, new Date())
+    }
+    persist(
+      NotificationRecordedEvent(
+        uuid,
+        notification.copyWithAck(ack)
+      )
+    ) {event =>
+      updateState(event)
+      context.system.eventStream.publish(event)
+      ack.status match {
+        case NotificationStatus.Rejected  => sender() ! NotificationRejected(uuid)
+        case NotificationStatus.Sent      => sender() ! NotificationSent(uuid)
+        case NotificationStatus.Delivered => sender() ! NotificationDelivered(uuid)
+        case _                            => sender() ! NotificationUndelivered(uuid)
+      }
+      performSnapshotIfRequired()
+    }
+  }
+
+  def sendNotification(uuid: String, notification: Notification) = {
+    val ack = notification match {
+      case mail: Mail => mailProvider.send(mail)
+      case sms: SMS   => smsProvider.send(sms)
+      case _          => NotificationAck(None, NotificationStatus.Pending, new Date())
+    }
+    persist(
+      NotificationRecordedEvent(
+        uuid,
+        notification
+          .incNbTries()
+          .copyWithAck(ack)
+      )
+    ) {event =>
+      updateState(event)
+      context.system.eventStream.publish(event)
+      ack.status match {
+        case NotificationStatus.Rejected  => sender() ! NotificationRejected(uuid)
+        case NotificationStatus.Sent      => sender() ! NotificationSent(uuid)
+        case NotificationStatus.Delivered => sender() ! NotificationDelivered(uuid)
+        case _                            => sender() ! NotificationUndelivered(uuid)
+      }
+      performSnapshotIfRequired()
+    }
   }
 
   private def performSnapshotIfRequired(): Unit = {

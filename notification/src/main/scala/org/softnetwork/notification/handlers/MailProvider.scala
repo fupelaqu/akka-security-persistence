@@ -9,6 +9,7 @@ import java.util.{UUID, Date}
 import com.typesafe.scalalogging.StrictLogging
 import org.softnetwork.notification.config.Settings
 import org.softnetwork.notification.config.Settings.MailConfig
+import org.softnetwork.notification.model.NotificationStatus.NotificationStatus
 import org.softnetwork.notification.model._
 
 import scala.util.{Failure, Success, Try}
@@ -64,6 +65,9 @@ class MailProvider extends NotificationProvider[Mail] with StrictLogging {
         NotificationAck(None, NotificationStatus.Undelivered, new Date())
     }
   }
+
+  override def ack(uuid: String, currentStatus: NotificationStatus): NotificationAck =
+    NotificationAck(Some(uuid), currentStatus, new Date())
 }
 
 class MockMailProvider extends MailProvider {

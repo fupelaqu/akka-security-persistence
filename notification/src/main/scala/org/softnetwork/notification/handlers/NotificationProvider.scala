@@ -1,5 +1,6 @@
 package org.softnetwork.notification.handlers
 
+import org.softnetwork.notification.model.NotificationStatus.NotificationStatus
 import org.softnetwork.notification.model.{NotificationAck, Notification}
 
 /**
@@ -7,4 +8,5 @@ import org.softnetwork.notification.model.{NotificationAck, Notification}
   */
 trait NotificationProvider[T<:Notification] {
   def send(notification: T): NotificationAck
+  def ack(uuid: String, currentStatus: NotificationStatus): NotificationAck
 }
