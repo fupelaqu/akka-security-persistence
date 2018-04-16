@@ -98,8 +98,46 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     actorSystem.terminate()
   }
 
-  "SendMail" should {
-    "be sent" in {
+  "NotificationHandler" should {
+    "add notification" in {
+      notificationHandler.handle(
+        AddNotification(
+          Mail(
+            from = from,
+            to = to,
+            subject = subject,
+            message = message
+          )
+        )
+      ) match {
+        case _: NotificationAdded =>
+        case _                    => fail
+      }
+    }
+    "remove notification" in {
+      (notificationHandler.handle(
+        AddNotification(
+          Mail(
+            from = from,
+            to = to,
+            subject = subject,
+            message = message
+          )
+        )
+      ) match {
+        case n: NotificationAdded => Some(n.uuid)
+        case _                    => None
+      }) match {
+        case Some(uuid) =>
+          notificationHandler.handle(RemoveNotification(uuid)) match {
+            case _: NotificationRemoved.type =>
+            case _                           => fail
+          }
+        case _          => fail
+      }
+
+    }
+    "send notification" in {
       notificationHandler.handle(
         SendNotification(
           Mail(
@@ -112,6 +150,50 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
       ) match {
         case _: NotificationSent =>
         case _                   => fail
+      }
+    }
+    "resend notification" in {
+      (notificationHandler.handle(
+        SendNotification(
+          Mail(
+            from = from,
+            to = to,
+            subject = subject,
+            message = message
+          )
+        )
+      ) match {
+        case n: NotificationSent => Some(n.uuid)
+        case _                   => None
+      }) match {
+        case Some(uuid) =>
+          notificationHandler.handle(ResendNotification(uuid)) match {
+            case _: NotificationSent =>
+            case _                   => fail
+          }
+        case _          => fail
+      }
+    }
+    "retrieve notification status" in {
+      (notificationHandler.handle(
+        SendNotification(
+          Mail(
+            from = from,
+            to = to,
+            subject = subject,
+            message = message
+          )
+        )
+      ) match {
+        case n: NotificationSent => Some(n.uuid)
+        case _                   => None
+      }) match {
+        case Some(uuid) =>
+          notificationHandler.handle(GetNotificationStatus(uuid)) match {
+            case _: NotificationSent =>
+            case _                   => fail
+          }
+        case _          => fail
       }
     }
   }

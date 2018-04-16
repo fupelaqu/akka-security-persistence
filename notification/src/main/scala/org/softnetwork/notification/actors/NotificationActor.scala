@@ -78,13 +78,18 @@ class NotificationActor extends PersistentActor with ActorLogging {
 
     case cmd: RemoveNotification             =>
       import cmd._
-      persist(
-        NotificationRemovedEvent(uuid)
-      ) {event =>
-        updateState(event)
-        context.system.eventStream.publish(event)
-        sender() ! NotificationRemoved
-        performSnapshotIfRequired()
+      state.notifications.get(uuid) match {
+        case Some(_) =>
+          persist(
+            NotificationRemovedEvent(uuid)
+          ) {event =>
+            updateState(event)
+            context.system.eventStream.publish(event)
+            sender() ! NotificationRemoved
+            performSnapshotIfRequired()
+          }
+
+        case _       => sender() ! NotificationNotFound
       }
 
     case cmd: SendNotification[Notification] =>
@@ -110,10 +115,11 @@ class NotificationActor extends PersistentActor with ActorLogging {
       state.notifications.get(uuid) match {
         case Some(notification) =>
           import notification._
+          import NotificationStatus._
           status match {
-            case NotificationStatus.Delivered => sender() ! NotificationDelivered
-            case NotificationStatus.Rejected  => sender() ! NotificationRejected
-            case _                            => ack(uuid, notification)
+            case Delivered => sender() ! NotificationDelivered
+            case Rejected  => sender() ! NotificationRejected
+            case _         => ack(uuid, notification)
           }
         case _                  => sender() ! NotificationNotFound
       }
