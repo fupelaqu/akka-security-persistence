@@ -5,7 +5,7 @@ import java.util.{UUID, Date}
 import akka.actor.{Props, ActorLogging}
 import akka.persistence.{RecoveryCompleted, SnapshotOffer, PersistentActor}
 import org.softnetwork.akka.message.Event
-import org.softnetwork.notification.handlers.{MockSMSProvider, SMSProvider, MockMailProvider, MailProvider}
+import org.softnetwork.notification.handlers._
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model._
 
@@ -17,6 +17,8 @@ class NotificationActor extends PersistentActor with ActorLogging {
   val mailProvider: MailProvider = new MailProvider
 
   val smsProvider: SMSProvider = new SMSProvider
+
+  val pushProvider: PushProvider = new PushProvider
 
   var state = NotificationState()
 
@@ -135,6 +137,7 @@ class NotificationActor extends PersistentActor with ActorLogging {
         notification match {
             case mail: Mail => mailProvider.ack(s, status)
             case sms: SMS   => smsProvider.ack(s, status)
+            case push: Push => pushProvider.ack(s, status)
             case _          => NotificationAck(Some(s), status, new Date())
         }
       case _       => NotificationAck(None, status, new Date())
@@ -162,6 +165,7 @@ class NotificationActor extends PersistentActor with ActorLogging {
     val ack = notification match {
       case mail: Mail => mailProvider.send(mail)
       case sms: SMS   => smsProvider.send(sms)
+      case push: Push => pushProvider.send(push)
       case _          => NotificationAck(None, NotificationStatus.Pending, new Date())
     }
     persist(
@@ -201,5 +205,6 @@ object MockNotificationActor {
   def props(): Props = Props(new NotificationActor {
     override val mailProvider: MailProvider = new MockMailProvider
     override val smsProvider: SMSProvider = new MockSMSProvider
+    override val pushProvider: PushProvider = new MockPushProvider
   })
 }
