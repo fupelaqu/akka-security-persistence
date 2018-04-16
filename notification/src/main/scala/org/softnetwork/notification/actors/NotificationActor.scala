@@ -30,10 +30,21 @@ class NotificationActor extends PersistentActor with ActorLogging {
       case evt: NotificationRecordedEvent[Notification] =>
         import evt._
         state = state.copy(notifications = state.notifications.updated(uuid, notification))
+        notification.deferred match {
+          case Some(deferred) =>
+            if(deferred.after(new Date()) || notification.status == NotificationStatus.Pending){
+              state = state.copy(pendings = state.pendings + uuid)
+            }
+            else{
+              state = state.copy(pendings = state.pendings - uuid)
+            }
+          case _              =>
+        }
 
       case evt: NotificationRemovedEvent                =>
         import evt._
         state = state.copy(notifications = state.notifications - uuid)
+        state = state.copy(pendings = state.pendings - uuid)
 
       case _                                            =>
     }
@@ -130,11 +141,12 @@ class NotificationActor extends PersistentActor with ActorLogging {
     ) {event =>
       updateState(event)
       context.system.eventStream.publish(event)
+      import NotificationStatus._
       ack.status match {
-        case NotificationStatus.Rejected  => sender() ! NotificationRejected(uuid)
-        case NotificationStatus.Sent      => sender() ! NotificationSent(uuid)
-        case NotificationStatus.Delivered => sender() ! NotificationDelivered(uuid)
-        case _                            => sender() ! NotificationUndelivered(uuid)
+        case Rejected  => sender() ! NotificationRejected(uuid)
+        case Sent      => sender() ! NotificationSent(uuid)
+        case Delivered => sender() ! NotificationDelivered(uuid)
+        case _         => sender() ! NotificationUndelivered(uuid)
       }
       performSnapshotIfRequired()
     }
@@ -156,11 +168,12 @@ class NotificationActor extends PersistentActor with ActorLogging {
     ) {event =>
       updateState(event)
       context.system.eventStream.publish(event)
+      import NotificationStatus._
       ack.status match {
-        case NotificationStatus.Rejected  => sender() ! NotificationRejected(uuid)
-        case NotificationStatus.Sent      => sender() ! NotificationSent(uuid)
-        case NotificationStatus.Delivered => sender() ! NotificationDelivered(uuid)
-        case _                            => sender() ! NotificationUndelivered(uuid)
+        case Rejected  => sender() ! NotificationRejected(uuid)
+        case Sent      => sender() ! NotificationSent(uuid)
+        case Delivered => sender() ! NotificationDelivered(uuid)
+        case _         => sender() ! NotificationUndelivered(uuid)
       }
       performSnapshotIfRequired()
     }
@@ -172,7 +185,7 @@ class NotificationActor extends PersistentActor with ActorLogging {
   }
 }
 
-case class NotificationState(notifications: Map[String, Notification] = Map.empty, pendings: Seq[String] = Seq.empty)
+case class NotificationState(notifications: Map[String, Notification] = Map.empty, pendings: Set[String] = Set.empty)
 
 object NotificationActor {
   def props(): Props = Props(new NotificationActor)
