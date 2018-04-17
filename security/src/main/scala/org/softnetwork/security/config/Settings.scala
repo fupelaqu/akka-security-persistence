@@ -24,7 +24,9 @@ object Settings extends StrictLogging {
 
   val VerificationCodeExpirationTime = config.getInt("security.verification.code.expirationTime")
 
-  val ApplicationId = config.getString("security.applicationId")
+  val PushClientId = config.getString("security.push.clientId")
+
+  val SMSClientId = config.getString("security.sms.clientId")
 
   def passwordRules(config: Config = config) = Configs[PasswordRules].get(config, "security.password").toEither match{
     case Left(configError)  =>

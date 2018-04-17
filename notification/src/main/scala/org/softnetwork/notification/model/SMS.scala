@@ -1,6 +1,6 @@
 package org.softnetwork.notification.model
 
-import java.util.{UUID, Date}
+import java.util.Date
 
 /**
   * Created by smanciot on 14/04/2018.

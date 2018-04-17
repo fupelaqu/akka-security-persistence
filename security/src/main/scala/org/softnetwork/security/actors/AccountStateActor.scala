@@ -8,7 +8,8 @@ import mustache.Mustache
 import org.softnetwork.akka.message._
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.notification.message._
-import org.softnetwork.notification.model.{BasicDevice, Push, Mail}
+import org.softnetwork.notification.model.NotificationType.NotificationType
+import org.softnetwork.notification.model._
 import org.softnetwork.security.config.Settings._
 import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message._
@@ -49,7 +50,68 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 
   def createAccount(cmd: SignIn): Option[T]
 
-  def sendNotification(account: T, subject: String, body: String): Boolean = {
+  private def sendMail(account: T,
+                       subject: String,
+                       body: String,
+                       maxTries: Int = 1,
+                       deferred: Option[Date] = None): Boolean = {
+    account.email match {
+      case Some(email) =>
+        notificationHandler().handle(
+          SendNotification(
+            Mail(
+              (MailFrom, Some("nobody")),
+              Seq(email),
+              Seq(),
+              Seq(),
+              subject,
+              body,
+              Some(body),
+              maxTries = maxTries,
+              deferred = deferred
+            )
+          )
+        ) match {
+          case _: NotificationSent      => true
+          case _: NotificationDelivered => true
+          case _                        => false
+        }
+      case _ => false
+    }
+  }
+
+  private def sendSMS(account: T,
+                      subject: String,
+                      body: String,
+                      maxTries: Int = 1,
+                      deferred: Option[Date] = None): Boolean = {
+    account.gsm match {
+      case Some(gsm) =>
+        notificationHandler().handle(
+          SendNotification(
+            SMS(
+              (SMSClientId, Some("nobody")),
+              Seq(gsm),
+              subject,
+              body,
+              maxTries = maxTries,
+              deferred = deferred
+            )
+          )
+        ) match {
+          case _: NotificationSent      => true
+          case _: NotificationDelivered => true
+          case _                        => false
+        }
+      case _ => false
+    }
+  }
+
+  private def sendPush(account: T,
+                        subject: String,
+                        body: String,
+                        maxTries: Int = 1,
+                        deferred: Option[Date] = None): Boolean = {
     state.accountRegistrations.get(account.uuid) match {
       case Some(registrations) =>
         val devices = registrations.flatMap(
@@ -60,42 +122,51 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         notificationHandler().handle(
           SendNotification(
             Push(
-              from = (ApplicationId, None),
+              from = (PushClientId, None),
               subject = subject,
               message = body,
               devices = devices,
-              id = "" //TODO
+              id = "", //TODO
+              maxTries = maxTries,
+              deferred = deferred
             )
           )
         ) match {
-          case _: NotificationSent => true
-          case _                   => false
+          case _: NotificationSent      => true
+          case _: NotificationDelivered => true
+          case _                        => false
         }
-      case _                   =>
-        account.email match {
-          case Some(email) =>
-            notificationHandler().handle(
-              SendNotification(
-                Mail(
-                  (MailFrom, Some("nobody")),
-                  Seq(email),
-                  Seq(),
-                  Seq(),
-                  subject,
-                  body,
-                  Some(body)
-                )
-              )
-            ) match {
-              case _: NotificationSent => true
-              case _                   => false
-            }
-          case _           => false // TODO SMS notification
-        }
+      case _                 => false
     }
   }
 
-  def sendActivation(account: T, activationToken: VerificationToken): Boolean = {
+  private def sendNotificationByChannel(account: T,
+                              subject: String,
+                              body: String,
+                              channel: NotificationType,
+                              maxTries: Int = 1,
+                              deferred: Option[Date] = None): Boolean = {
+    channel match {
+      case NotificationType.Mail => sendMail(account, subject, body)
+      case NotificationType.SMS  => sendSMS(account, subject, body)
+      case NotificationType.Push => sendPush(account, subject, body)
+      case _                     => false
+    }
+  }
+
+  def sendNotification(account: T,
+                        subject: String,
+                        body: String,
+                        channels: Seq[NotificationType],
+                        maxTries: Int = 1,
+                        deferred: Option[Date] = None): Boolean = {
+    channels.exists((channel) => sendNotificationByChannel(account, subject, body, channel, maxTries, deferred))
+  }
+
+  def sendActivation(account: T,
+                     activationToken: VerificationToken,
+                     maxTries: Int = 1,
+                     deferred: Option[Date] = None): Boolean = {
     val subject = "Activation"
 
     val body = new Mustache(
@@ -104,10 +175,20 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       )
     ).render(Map("account" -> account, "activationUrl" -> s"$BaseUrl/$Path/activate/${activationToken.token}"))
 
-    sendNotification(account, subject, body)
+    sendNotification(
+      account,
+      subject,
+      body,
+      Seq(NotificationType.Mail, NotificationType.Push, NotificationType.SMS),
+      maxTries,
+      deferred
+    )
   }
 
-  def sendVerificationCode(account: T, verificationCode: VerificationCode): Boolean = {
+  def sendVerificationCode(account: T,
+                           verificationCode: VerificationCode,
+                           maxTries: Int = 1,
+                           deferred: Option[Date] = None): Boolean = {
     val subject = "Reset Password"
 
     val body = new Mustache(
@@ -116,7 +197,14 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
       )
     ).render(Map("account" -> account, "code" -> verificationCode.code))
 
-    sendNotification(account, subject, body)
+    sendNotification(
+      account,
+      subject,
+      body,
+      Seq(NotificationType.Push, NotificationType.Mail, NotificationType.SMS),
+      maxTries,
+      deferred
+    )
   }
 
   def updateState(event: Event): Unit = {
