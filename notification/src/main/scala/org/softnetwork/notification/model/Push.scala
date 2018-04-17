@@ -10,7 +10,6 @@ import org.softnetwork.notification.model.Platform.Platform
 /**
   *
   * @param from - application id
-  * @param to - registration id(s)
   * @param subject - notification subject
   * @param message - notification message
   * @param maxTries - maximum number of attempts allowed to send this notification
@@ -19,13 +18,12 @@ import org.softnetwork.notification.model.Platform.Platform
   * @param ackUuid - notification acknowledgment id
   * @param status - notification status
   * @param lastUpdated - notification last updated date
-  * @param platform - device platform
-  * @param uuid - push id
+  * @param devices - devices
+  * @param id - push id
   * @param badge - push badge
   * @param sound - the sound to be played on the device when the notification will be received
   */
-case class Push(override val from: (String, Option[String]),
-           override val to: Seq[String],
+case class Push(override val from: (String, Option[String]) = ("", None),
            override val subject: String,
            override val message: String,
            override val maxTries: Int = 1,
@@ -34,10 +32,12 @@ case class Push(override val from: (String, Option[String]),
            override val ackUuid: Option[String] = None,
            override val status: NotificationStatus.Value = NotificationStatus.Pending,
            override val lastUpdated: Option[Date] = None,
-           platform: Platform,
-           uuid: String,
-           badge: Option[Long] = None,
+           devices: Seq[BasicDevice],
+           id: String,
+           badge: Long = 1L,
            sound: Option[String] = None) extends Notification {
+
+  override val to: Seq[String] = devices.map(_.regId)
 
   override val `type`: NotificationType.Value = NotificationType.Push
 
@@ -51,4 +51,4 @@ case class Push(override val from: (String, Option[String]),
 
 }
 
-
+case class BasicDevice(regId: String, platform: Platform)

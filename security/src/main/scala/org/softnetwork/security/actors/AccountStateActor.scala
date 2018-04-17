@@ -1,6 +1,6 @@
 package org.softnetwork.security.actors
 
-import java.util.{UUID, Date}
+import java.util.Date
 
 import akka.actor.ActorLogging
 import akka.persistence.{PersistentActor, RecoveryCompleted, SnapshotOffer}
@@ -8,7 +8,7 @@ import mustache.Mustache
 import org.softnetwork.akka.message._
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.notification.message._
-import org.softnetwork.notification.model.Mail
+import org.softnetwork.notification.model.{BasicDevice, Push, Mail}
 import org.softnetwork.security.config.Settings._
 import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message._
@@ -49,65 +49,74 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
 
   def createAccount(cmd: SignIn): Option[T]
 
-  def sendActivation(account: T, activationToken: VerificationToken): Boolean = {
-    account.email match {
-      case Some(email) =>
-        val activationUrl = s"$BaseUrl/$Path/activate/${activationToken.token}"
-        val template = new Mustache(
-          Source.fromFile(
-            Thread.currentThread().getContextClassLoader.getResource("notification/activation.mustache").getPath
+  def sendNotification(account: T, subject: String, body: String): Boolean = {
+    state.accountRegistrations.get(account.uuid) match {
+      case Some(registrations) =>
+        val devices = registrations.flatMap(
+          (regId) => state.deviceRegistrations.get(regId).map(
+            (registration) => BasicDevice(registration.regId, registration.platform)
           )
-        )
-        val body = template.render(Map("account" -> account, "activationUrl" -> activationUrl))
-        val uuid = UUID.randomUUID().toString
+        ).toSeq
         notificationHandler().handle(
           SendNotification(
-            Mail(
-              (MailFrom, Some("nobody")),
-              Seq(email),
-              Seq(),
-              Seq(),
-              "Activation",
-              body,
-              Some(body)
+            Push(
+              from = (ApplicationId, None),
+              subject = subject,
+              message = body,
+              devices = devices,
+              id = "" //TODO
             )
           )
         ) match {
           case _: NotificationSent => true
           case _                   => false
         }
-      case _          => false // TODO push notification
+      case _                   =>
+        account.email match {
+          case Some(email) =>
+            notificationHandler().handle(
+              SendNotification(
+                Mail(
+                  (MailFrom, Some("nobody")),
+                  Seq(email),
+                  Seq(),
+                  Seq(),
+                  subject,
+                  body,
+                  Some(body)
+                )
+              )
+            ) match {
+              case _: NotificationSent => true
+              case _                   => false
+            }
+          case _           => false // TODO SMS notification
+        }
     }
   }
 
+  def sendActivation(account: T, activationToken: VerificationToken): Boolean = {
+    val subject = "Activation"
+
+    val body = new Mustache(
+      Source.fromFile(
+        Thread.currentThread().getContextClassLoader.getResource("notification/activation.mustache").getPath
+      )
+    ).render(Map("account" -> account, "activationUrl" -> s"$BaseUrl/$Path/activate/${activationToken.token}"))
+
+    sendNotification(account, subject, body)
+  }
+
   def sendVerificationCode(account: T, verificationCode: VerificationCode): Boolean = {
-    account.email match {
-      case Some(email) =>
-        val template = new Mustache(
-          Source.fromFile(
-            Thread.currentThread().getContextClassLoader.getResource("notification/reset_password.mustache").getPath
-          )
-        )
-        val body = template.render(Map("account" -> account, "code" -> verificationCode.code))
-        val uuid = UUID.randomUUID().toString
-        notificationHandler().handle(
-          SendNotification(
-            Mail(
-              (MailFrom, Some("nobody")),
-              Seq(email),
-              Seq(),
-              Seq(),
-              "Reset Password",
-              body,
-              Some(body)
-            )
-          )
-        ) match {
-          case _: NotificationSent => true
-          case _                   => false
-        }
-      case _           => false // TODO push notification
-    }
+    val subject = "Reset Password"
+
+    val body = new Mustache(
+      Source.fromFile(
+        Thread.currentThread().getContextClassLoader.getResource("notification/reset_password.mustache").getPath
+      )
+    ).render(Map("account" -> account, "code" -> verificationCode.code))
+
+    sendNotification(account, subject, body)
   }
 
   def updateState(event: Event): Unit = {
@@ -178,6 +187,28 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         import evt._
         state = state.copy(
           verificationCodes = state.verificationCodes - md5Hash(verificationCode)
+        )
+
+      case evt: RegisterDeviceEvent   =>
+        import evt.registration._
+        val regId = registration.regId
+        state = state.copy(
+          deviceRegistrations = state.deviceRegistrations.updated(regId, registration),
+          accountRegistrations = state.accountRegistrations.updated(
+            uuid,
+            state.accountRegistrations.getOrElse(uuid, Set.empty) + regId
+          )
+        )
+
+      case evt: UnregisterDeviceEvent =>
+        import evt.registration._
+        val regId = registration.regId
+        state = state.copy(
+          deviceRegistrations = state.deviceRegistrations - regId,
+          accountRegistrations = state.accountRegistrations.updated(
+            uuid,
+            state.accountRegistrations.getOrElse(uuid, Set.empty) - regId
+          )
         )
 
       case _                          =>
@@ -452,6 +483,42 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
         }
       }
 
+    /**
+      * handle device registration
+      */
+    case cmd: RegisterDevice =>
+      import cmd._
+      lookupAccount(uuid) match {
+        case Some(account) =>
+          persist(new RegisterDeviceEvent(DeviceRegistrationWithUuid(registration, uuid))) {event =>
+            updateState(event)
+            context.system.eventStream.publish(event)
+            sender() ! DeviceRegistered
+            performSnapshotIfRequired()
+          }
+        case _             => sender() ! AccountNotFound
+      }
+
+    /**
+      * handle device unregistration
+      */
+    case cmd: UnregisterDevice =>
+      import cmd._
+      lookupAccount(uuid) match {
+        case Some(account) =>
+          state.deviceRegistrations.get(regId) match {
+            case Some(registration) =>
+              persist(new UnregisterDeviceEvent(DeviceRegistrationWithUuid(registration, uuid))) {event =>
+                updateState(event)
+                context.system.eventStream.publish(event)
+                sender() ! DeviceUnregistered
+                performSnapshotIfRequired()
+              }
+            case _                  => sender() ! DeviceRegistrationNotFound
+          }
+        case _             => sender() ! AccountNotFound
+      }
+
     /** handle signOut **/
     case cmd: SignOut        =>
       import cmd._
@@ -486,7 +553,9 @@ case class AccountState[T <: Account](
    accounts: Map[String, T] = Map[String, T](),
    principals: Map[String, String] = Map.empty,
    activationTokens: Map[String, ActivationTokenWithUuid] = Map.empty,
-   verificationCodes: Map[String, VerificationCodeWithUuid] = Map.empty
+   verificationCodes: Map[String, VerificationCodeWithUuid] = Map.empty,
+   deviceRegistrations: Map[String, DeviceRegistration] = Map.empty,
+   accountRegistrations: Map[String, Set[String]] = Map.empty
 )
 
 case class ActivationTokenWithUuid(verificationToken: VerificationToken, uuid: String, notified: Boolean = false){
@@ -496,3 +565,5 @@ case class ActivationTokenWithUuid(verificationToken: VerificationToken, uuid: S
 case class VerificationCodeWithUuid(verificationCode: VerificationCode, uuid: String, notified: Boolean = false){
   def check: Boolean = verificationCode.expirationDate >= new Date().getTime
 }
+
+case class DeviceRegistrationWithUuid(registration: DeviceRegistration, uuid: String)

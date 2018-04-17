@@ -36,3 +36,5 @@ case object UndeliveredVerificationCode extends AccountErrorMessage("Undelivered
 case object CodeNotFound extends AccountErrorMessage("TokenNotFound")
 
 case object CodeExpired extends AccountErrorMessage("TokenNotFound")
+
+case object DeviceRegistrationNotFound extends AccountErrorMessage("DeviceRegistrationNotFound")

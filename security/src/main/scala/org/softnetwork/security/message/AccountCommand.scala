@@ -1,6 +1,7 @@
 package org.softnetwork.security.message
 
 import org.softnetwork.akka.message.Command
+import org.softnetwork.security.model.DeviceRegistration
 
 /**
   * Created by smanciot on 19/03/2018.
@@ -28,3 +29,7 @@ case class ResetPassword(code: String, newPassword: String, confirmedPassword: S
 case class UpdatePassword(login: String, oldPassword: String, newPassword: String, confirmedPassword: String) extends AccountCommand
 
 case class Activate(token: String) extends AccountCommand
+
+case class RegisterDevice(uuid: String, registration: DeviceRegistration) extends AccountCommand
+
+case class UnregisterDevice(uuid: String, regId: String) extends AccountCommand

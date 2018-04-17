@@ -1,7 +1,7 @@
 package org.softnetwork.security.message
 
 import org.softnetwork.akka.message.{Event, CommandResult}
-import org.softnetwork.security.actors.{ActivationTokenWithUuid, VerificationCodeWithUuid}
+import org.softnetwork.security.actors.{DeviceRegistrationWithUuid, ActivationTokenWithUuid, VerificationCodeWithUuid}
 import org.softnetwork.security.model.Account
 
 /**
@@ -36,3 +36,11 @@ case object VerificationCodeSent extends AccountCommandResult
 case class RemoveVerificationCodeEvent(verificationCode: String) extends Event
 
 case object PasswordReseted extends AccountCommandResult
+
+case object DeviceRegistered extends AccountCommandResult
+
+case object DeviceUnregistered extends AccountCommandResult
+
+case class RegisterDeviceEvent(registration: DeviceRegistrationWithUuid) extends Event
+
+case class UnregisterDeviceEvent(registration: DeviceRegistrationWithUuid) extends Event
