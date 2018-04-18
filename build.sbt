@@ -24,6 +24,8 @@ addCommandAlias("pld", ";clean;local:publishLocal;dockerComposeUp") // clean and
 
 (shellPrompt in ThisBuild) := prompt
 
+organization := "org.softnetwork.security"
+
 name := "akka-security-persistence"
 
 version := "0.1"

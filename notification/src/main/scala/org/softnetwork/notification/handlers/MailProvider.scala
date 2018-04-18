@@ -19,7 +19,7 @@ import scala.util.{Failure, Success, Try}
   */
 class MailProvider extends NotificationProvider[Mail] with StrictLogging {
 
-  val mailConfig: MailConfig = Settings.config.get
+  val mailConfig: MailConfig = Settings.config.get.mail
 
   def send(notification: Mail): NotificationAck = {
     import org.apache.commons.mail._

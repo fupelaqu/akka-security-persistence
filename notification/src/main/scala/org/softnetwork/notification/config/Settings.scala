@@ -6,12 +6,14 @@ import configs.Configs
 
 object Settings extends StrictLogging {
 
-  lazy val config: Option[MailConfig] = Configs[MailConfig].get(ConfigFactory.load(), "mail.smtp").toEither match {
+  lazy val config: Option[NotificationConfig] = Configs[NotificationConfig].get(ConfigFactory.load(), "notification").toEither match {
     case Left(configError) =>
       logger.error(s"Something went wrong with the provided arguments $configError")
       None
     case Right(r) => Some(r)
   }
+
+  case class NotificationConfig(mail: MailConfig, push: PushConfig)
 
   case class MailConfig(host: String,
                         port: Int,
@@ -22,4 +24,13 @@ object Settings extends StrictLogging {
                         sslCheckServerIdentity: Boolean,
                         startTLSEnabled: Boolean)
 
+  case class PushConfig(apns: ApnsConfig, gcm: GcmConfig)
+
+  case class ApnsConfig(keystore: Keystore, host: String, port: Int, password: String, token: Token)
+
+  case class Keystore(name: String, `type`: String)
+
+  case class Token(size: Int = 64)
+
+  case class GcmConfig(apiKey: String)
 }
