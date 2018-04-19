@@ -14,6 +14,7 @@ case class SMS(override val from: (String, Option[String]),
                 override val deferred: Option[Date] = None,
                 override val ackUuid: Option[String] = None,
                 override val status: NotificationStatus.Value = NotificationStatus.Pending,
+                override val recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
                 override val lastUpdated: Option[Date] = None) extends Notification {
 
   override val `type`: NotificationType.Value = NotificationType.SMS
@@ -23,6 +24,7 @@ case class SMS(override val from: (String, Option[String]),
   override def copyWithAck(ack: NotificationAck): Notification = copy(
     ackUuid = ack.uuid,
     status = ack.status,
+    recipients = ack.recipients,
     lastUpdated = Some(ack.date)
   )
 

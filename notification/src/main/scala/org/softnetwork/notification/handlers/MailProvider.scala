@@ -4,12 +4,11 @@ package org.softnetwork.notification.handlers
   * Created by smanciot on 07/04/2018.
   */
 
-import java.util.{UUID, Date}
+import java.util.Date
 
 import com.typesafe.scalalogging.StrictLogging
 import org.softnetwork.notification.config.Settings
 import org.softnetwork.notification.config.Settings.MailConfig
-import org.softnetwork.notification.model.NotificationStatus.NotificationStatus
 import org.softnetwork.notification.model._
 
 import scala.util.{Failure, Success, Try}
@@ -56,24 +55,27 @@ class MailProvider extends NotificationProvider[Mail] with StrictLogging {
     notification.cc.foreach(commonsMail.addCc)
     notification.bcc.foreach(commonsMail.addBcc)
 
-    Try(commonsMail.setFrom(notification.from._1, notification.from._2.getOrElse("")).setSubject(notification.subject).send()) match {
+    Try(commonsMail
+      .setFrom(notification.from._1, notification.from._2.getOrElse(""))
+      .setSubject(notification.subject)
+      .send()) match {
       case Success(s) =>
         logger.info(s)
-        NotificationAck(Some(s), NotificationStatus.Sent, new Date())
+        NotificationAck(
+          Some(s),
+          notification.to.map((recipient) => (recipient, NotificationStatus.Sent)),
+          new Date()
+        )
       case Failure(f) =>
         logger.error(f.getMessage, f)
-        NotificationAck(None, NotificationStatus.Undelivered, new Date())
+        NotificationAck(
+          None,
+          notification.to.map((recipient) => (recipient, NotificationStatus.Undelivered)),
+          new Date()
+        )
     }
   }
 
-  override def ack(uuid: String, currentStatus: NotificationStatus): NotificationAck =
-    NotificationAck(Some(uuid), currentStatus, new Date())
 }
 
-class MockMailProvider extends MailProvider {
-  override def send(mail: Mail): NotificationAck = NotificationAck(
-    Some(UUID.randomUUID().toString),
-    NotificationStatus.Sent,
-    new Date()
-  )
-}
+class MockMailProvider extends MailProvider with MockNotificationProvider[Mail]

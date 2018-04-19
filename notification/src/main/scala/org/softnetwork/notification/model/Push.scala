@@ -31,6 +31,7 @@ case class Push(override val from: (String, Option[String]) = ("", None),
            override val deferred: Option[Date] = None,
            override val ackUuid: Option[String] = None,
            override val status: NotificationStatus.Value = NotificationStatus.Pending,
+           override val recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
            override val lastUpdated: Option[Date] = None,
            devices: Seq[BasicDevice],
            id: String,
@@ -46,6 +47,7 @@ case class Push(override val from: (String, Option[String]) = ("", None),
   override def copyWithAck(ack: NotificationAck): Notification = copy(
     ackUuid = ack.uuid,
     status = ack.status,
+    recipients = ack.recipients,
     lastUpdated = Some(ack.date)
   )
 

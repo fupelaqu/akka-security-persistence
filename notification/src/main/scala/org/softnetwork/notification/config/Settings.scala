@@ -26,9 +26,9 @@ object Settings extends StrictLogging {
 
   case class PushConfig(apns: ApnsConfig, gcm: GcmConfig)
 
-  case class ApnsConfig(keystore: Keystore, host: String, port: Int, password: String, token: Token)
+  case class ApnsConfig(keystore: Keystore, host: String, port: Int, token: Token)
 
-  case class Keystore(name: String, `type`: String)
+  case class Keystore(name: String, `type`: String, password: String)
 
   case class Token(size: Int = 64)
 

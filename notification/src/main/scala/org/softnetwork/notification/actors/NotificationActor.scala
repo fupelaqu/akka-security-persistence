@@ -135,12 +135,12 @@ class NotificationActor extends PersistentActor with ActorLogging {
     val ack = ackUuid match {
       case Some(s) =>
         notification match {
-            case mail: Mail => mailProvider.ack(s, status)
-            case sms: SMS   => smsProvider.ack(s, status)
-            case push: Push => pushProvider.ack(s, status)
-            case _          => NotificationAck(Some(s), status, new Date())
+            case mail: Mail => mailProvider.ack(s, recipients)
+            case sms: SMS   => smsProvider.ack(s, recipients)
+            case push: Push => pushProvider.ack(s, recipients)
+            case _          => NotificationAck(Some(s), recipients, new Date())
         }
-      case _       => NotificationAck(None, status, new Date())
+      case _       => NotificationAck(None, recipients, new Date())
     }
     persist(
       NotificationRecordedEvent(
@@ -166,7 +166,12 @@ class NotificationActor extends PersistentActor with ActorLogging {
       case mail: Mail => mailProvider.send(mail)
       case sms: SMS   => smsProvider.send(sms)
       case push: Push => pushProvider.send(push)
-      case _          => NotificationAck(None, NotificationStatus.Pending, new Date())
+      case _          =>
+        NotificationAck(
+          None,
+          notification.to.map((recipient) => (recipient, NotificationStatus.Pending)),
+          new Date()
+        )
     }
     persist(
       NotificationRecordedEvent(

@@ -19,11 +19,40 @@ trait Notification {
   def status: NotificationStatus.Value = NotificationStatus.Pending
   def lastUpdated: Option[Date] = None
 
+  def recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty
+
   def incNbTries(): Notification
   def copyWithAck(ack: NotificationAck): Notification
 }
 
-case class NotificationAck(uuid: Option[String], status: NotificationStatus.Value, date: Date = new Date())
+object Notification{
+  type NotificationStatusPerRecipient = (String, NotificationStatus.Value)
+}
+
+case class NotificationAck(
+  uuid: Option[String],
+  recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
+  date: Date = new Date()
+){
+  lazy val status: NotificationStatus.Value = {
+    val distinct = recipients.map(_._2).distinct
+    if(distinct.contains(NotificationStatus.Rejected)) {
+      NotificationStatus.Rejected
+    }
+    else if(distinct.contains(NotificationStatus.Undelivered)){
+      NotificationStatus.Undelivered
+    }
+    else if(distinct.contains(NotificationStatus.Pending)){
+      NotificationStatus.Pending
+    }
+    else if(distinct.contains(NotificationStatus.Sent)){
+      NotificationStatus.Sent
+    }
+    else{
+      NotificationStatus.Delivered
+    }
+  }
+}
 
 object NotificationType extends Enumeration {
   type NotificationType = Value
