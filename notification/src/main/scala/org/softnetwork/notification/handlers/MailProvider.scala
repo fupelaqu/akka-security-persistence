@@ -63,14 +63,18 @@ class MailProvider extends NotificationProvider[Mail] with StrictLogging {
         logger.info(s)
         NotificationAck(
           Some(s),
-          notification.to.map((recipient) => (recipient, NotificationStatus.Sent)),
+          notification.to.map((recipient) => NotificationStatusResult(recipient, NotificationStatus.Sent, None)),
           new Date()
         )
       case Failure(f) =>
         logger.error(f.getMessage, f)
         NotificationAck(
           None,
-          notification.to.map((recipient) => (recipient, NotificationStatus.Undelivered)),
+          notification.to.map((recipient) => NotificationStatusResult(
+            recipient,
+            NotificationStatus.Undelivered,
+            Some(f.getMessage))
+          ),
           new Date()
         )
     }

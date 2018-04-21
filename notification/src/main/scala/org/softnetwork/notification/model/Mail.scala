@@ -18,7 +18,7 @@ case class Mail(override val from: (String, Option[String]), // (email -> name)
                 override val deferred: Option[Date] = None,
                 override val ackUuid: Option[String] = None,
                 override val status: NotificationStatus.Value = NotificationStatus.Pending,
-                override val recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
+                override val results: Seq[NotificationStatusResult] = Seq.empty,
                 override val lastUpdated: Option[Date] = None) extends Notification {
 
   override val `type`: NotificationType.Value = NotificationType.Mail
@@ -28,7 +28,7 @@ case class Mail(override val from: (String, Option[String]), // (email -> name)
   override def copyWithAck(ack: NotificationAck): Notification = copy(
     ackUuid = ack.uuid,
     status = ack.status,
-    recipients = ack.recipients,
+    results = ack.results,
     lastUpdated = Some(ack.date)
   )
 

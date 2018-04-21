@@ -212,6 +212,8 @@ libraryDependencies in ThisBuild ++=
       Seq(
         "commons-codec" % "commons-codec" % "1.8",
         "org.apache.commons" % "commons-email" % "1.5",
+        "com.github.fernandospr" % "javapns-jdk16" % "2.4.0",
+        "com.google.gcm" % "gcm-server" % "1.0.0",
         "org.passay" % "passay" % "1.3.1",
         "com.chuusai" %% "shapeless" % "2.3.3",
         "org.apache.curator" % "curator-test" % "2.9.0" % "test"

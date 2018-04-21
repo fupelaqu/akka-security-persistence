@@ -24,7 +24,7 @@ object Settings extends StrictLogging {
                         sslCheckServerIdentity: Boolean,
                         startTLSEnabled: Boolean)
 
-  case class PushConfig(apns: ApnsConfig, gcm: GcmConfig)
+  case class PushConfig(apns: ApnsConfig, gcm: GcmConfig, dryRun: Boolean = false)
 
   case class ApnsConfig(keystore: Keystore, host: String, port: Int, token: Token)
 

@@ -24,19 +24,19 @@ import org.softnetwork.notification.model.Platform.Platform
   * @param sound - the sound to be played on the device when the notification will be received
   */
 case class Push(override val from: (String, Option[String]) = ("", None),
-           override val subject: String,
-           override val message: String,
-           override val maxTries: Int = 1,
-           override val nbTries: Int = 0,
-           override val deferred: Option[Date] = None,
-           override val ackUuid: Option[String] = None,
-           override val status: NotificationStatus.Value = NotificationStatus.Pending,
-           override val recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
-           override val lastUpdated: Option[Date] = None,
-           devices: Seq[BasicDevice],
-           id: String,
-           badge: Long = 1L,
-           sound: Option[String] = None) extends Notification {
+                override val subject: String,
+                override val message: String,
+                override val maxTries: Int = 1,
+                override val nbTries: Int = 0,
+                override val deferred: Option[Date] = None,
+                override val ackUuid: Option[String] = None,
+                override val status: NotificationStatus.Value = NotificationStatus.Pending,
+                override val results: Seq[NotificationStatusResult] = Seq.empty,
+                override val lastUpdated: Option[Date] = None,
+                devices: Seq[BasicDevice],
+                id: String,
+                badge: Int = 0,
+                sound: Option[String] = None) extends Notification {
 
   override val to: Seq[String] = devices.map(_.regId)
 
@@ -47,7 +47,7 @@ case class Push(override val from: (String, Option[String]) = ("", None),
   override def copyWithAck(ack: NotificationAck): Notification = copy(
     ackUuid = ack.uuid,
     status = ack.status,
-    recipients = ack.recipients,
+    results = ack.results,
     lastUpdated = Some(ack.date)
   )
 

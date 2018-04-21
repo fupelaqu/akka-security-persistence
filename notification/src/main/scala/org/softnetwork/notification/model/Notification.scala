@@ -19,23 +19,25 @@ trait Notification {
   def status: NotificationStatus.Value = NotificationStatus.Pending
   def lastUpdated: Option[Date] = None
 
-  def recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty
+  def results: Seq[NotificationStatusResult] = Seq.empty
 
   def incNbTries(): Notification
   def copyWithAck(ack: NotificationAck): Notification
 }
 
 object Notification{
-  type NotificationStatusPerRecipient = (String, NotificationStatus.Value)
+  type NotificationStatusPerRecipient = (String, NotificationStatus.Value, Option[String])
 }
+
+case class NotificationStatusResult(recipient: String, status: NotificationStatus.Value, error: Option[String])
 
 case class NotificationAck(
   uuid: Option[String],
-  recipients: Seq[Notification.NotificationStatusPerRecipient] = Seq.empty,
+  results: Seq[NotificationStatusResult] = Seq.empty,
   date: Date = new Date()
 ){
   lazy val status: NotificationStatus.Value = {
-    val distinct = recipients.map(_._2).distinct
+    val distinct = results.map(_.status).distinct
     if(distinct.contains(NotificationStatus.Rejected)) {
       NotificationStatus.Rejected
     }
