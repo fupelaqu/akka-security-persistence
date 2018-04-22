@@ -51,7 +51,7 @@ class PushProvider extends NotificationProvider[Push] {
         payload,
         keystore.name,
         keystore.password,
-        pushConfig.dryRun,
+        dryRun,
         (
           if(nbDevices > maxDevices)
             devices.take(maxDevices)
