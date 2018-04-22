@@ -25,11 +25,7 @@ trait Notification {
   def copyWithAck(ack: NotificationAck): Notification
 }
 
-object Notification{
-  type NotificationStatusPerRecipient = (String, NotificationStatus.Value, Option[String])
-}
-
-case class NotificationStatusResult(recipient: String, status: NotificationStatus.Value, error: Option[String])
+case class NotificationStatusResult(recipient: String, status: NotificationStatus.Value, error: Option[String] = None)
 
 case class NotificationAck(
   uuid: Option[String],

@@ -69,7 +69,6 @@ class NotificationActor extends PersistentActor with ActorLogging {
         NotificationRecordedEvent(
           uuid,
           notification
-            .incNbTries()
         )
       ) {event =>
         updateState(event)
@@ -162,29 +161,33 @@ class NotificationActor extends PersistentActor with ActorLogging {
   }
 
   def sendNotification(uuid: String, notification: Notification) = {
-    val ack = notification match {
-      case mail: Mail => mailProvider.send(mail)
-      case sms: SMS   => smsProvider.send(sms)
-      case push: Push => pushProvider.send(push)
-      case _          =>
-        NotificationAck(
-          None,
-          notification.to.map((recipient) => NotificationStatusResult(recipient, NotificationStatus.Pending, None)),
-          new Date()
-        )
-    }
-    persist(
-      NotificationRecordedEvent(
-        uuid,
-        notification
-          .incNbTries()
-          .copyWithAck(ack)
-      )
-    ) {event =>
+    val maybeAck =
+      notification.deferred match {
+        case Some(deferred) if deferred.after(new Date()) => None
+        case _                                            =>
+          notification match {
+            case mail: Mail => Some(mailProvider.send(mail))
+            case sms: SMS   => Some(smsProvider.send(sms))
+            case push: Push => Some(pushProvider.send(push))
+            case _          => None
+          }
+      }
+    val recordedEvent =
+      maybeAck match {
+        case Some(ack) =>
+          NotificationRecordedEvent(
+            uuid,
+            notification
+              .incNbTries()
+              .copyWithAck(ack)
+          )
+        case _       => NotificationRecordedEvent(uuid, notification)
+      }
+    persist(recordedEvent) {event =>
       updateState(event)
       context.system.eventStream.publish(event)
       import NotificationStatus._
-      ack.status match {
+      event.notification.status match {
         case Rejected  => sender() ! NotificationRejected(uuid)
         case Sent      => sender() ! NotificationSent(uuid)
         case Delivered => sender() ! NotificationDelivered(uuid)
