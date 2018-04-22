@@ -45,23 +45,29 @@ class PushProvider extends NotificationProvider[Push] {
                   ): Seq[NotificationStatusResult] = {
     import APNSPushProvider._
     import pushConfig.apns._
-    val results = ApnsPush.payload(
-      payload,
-      keystore.name,
-      keystore.password,
-      pushConfig.dryRun,
-      (
-        if(devices.length > maxDevices)
-          devices.take(maxDevices)
-        else
-          devices
-        ).map(deviceToApnsBasicDevice)
-    ).map(pushedNotificationToNotificationStatusResult)
-    if(devices.length > maxDevices){
-      apns(payload, devices.drop(maxDevices), status ++ results)
+    val nbDevices: Int = devices.length
+    if(nbDevices > 0){
+      val results = ApnsPush.payload(
+        payload,
+        keystore.name,
+        keystore.password,
+        pushConfig.dryRun,
+        (
+          if(nbDevices > maxDevices)
+            devices.take(maxDevices)
+          else
+            devices
+          ).map(deviceToApnsBasicDevice)
+      ).map(pushedNotificationToNotificationStatusResult)
+      if(nbDevices > maxDevices){
+        apns(payload, devices.drop(maxDevices), status ++ results)
+      }
+      else{
+        status ++ results
+      }
     }
-    else{
-      status ++ results
+    else {
+      status
     }
   }
 
@@ -72,23 +78,29 @@ class PushProvider extends NotificationProvider[Push] {
                    status: Seq[NotificationStatusResult] = Seq.empty
                  ): Seq[NotificationStatusResult] = {
     import GCMPushProvider._
-    val results = new Sender(
-      pushConfig.gcm.apiKey
-    )
-      .sendNoRetry(
-        payload,
-        (
-          if(devices.length > maxDevices)
-            devices.take(maxDevices)
-          else
-            devices
-        ).map(_.regId)
-      ).getResults.map(resultToNotificationStatusResult)
-    if(devices.length > maxDevices){
-      gcm(payload, devices.drop(maxDevices), status ++ results)
+    val nbDevices: Int = devices.length
+    if(nbDevices > 0){
+      val results = new Sender(
+        pushConfig.gcm.apiKey
+      )
+        .sendNoRetry(
+          payload,
+          (
+            if(nbDevices > maxDevices)
+              devices.take(maxDevices)
+            else
+              devices
+            ).map(_.regId)
+        ).getResults.map(resultToNotificationStatusResult)
+      if(nbDevices > maxDevices){
+        gcm(payload, devices.drop(maxDevices), status ++ results)
+      }
+      else{
+        status ++ results
+      }
     }
     else{
-      status ++ results
+      status
     }
   }
 
