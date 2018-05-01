@@ -17,10 +17,6 @@ import scala.concurrent.duration._
   */
 class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
 
-  val zookeeper                  = s"localhost:${kafkaServer.zookeeperPort}"
-
-  val broker                     = s"localhost:${kafkaServer.kafkaPort}"
-
   var actorSystem: ActorSystem = _
 
   implicit val timeout           = Timeout(10.seconds)

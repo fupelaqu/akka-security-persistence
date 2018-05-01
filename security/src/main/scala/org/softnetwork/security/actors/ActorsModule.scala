@@ -2,7 +2,7 @@ package org.softnetwork.security.actors
 
 import akka.actor.ActorRef
 import org.softnetwork.akka.actors.ActorSystemLocator
-import org.softnetwork.notification.actors.NotificationActor
+import org.softnetwork.notification.actors.MailActor
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.handlers.DefaultGenerator
 
@@ -13,7 +13,7 @@ trait ActorsModule {
 
   lazy val notificationHandler: NotificationHandler = new NotificationHandler(
     ActorSystemLocator().actorOf(
-      NotificationActor.props(), "notificationActor"
+      MailActor.props(), "mailActor"
     )
   )
 

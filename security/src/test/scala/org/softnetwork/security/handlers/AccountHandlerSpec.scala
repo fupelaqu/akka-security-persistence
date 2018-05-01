@@ -5,7 +5,7 @@ import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockNotificationActor
+import org.softnetwork.notification.actors.MockMailActor
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.message._
@@ -18,10 +18,6 @@ import scala.concurrent.duration._
   * Created by smanciot on 20/03/2018.
   */
 class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
-
-  val zookeeper                      = s"localhost:${kafkaServer.zookeeperPort}"
-
-  val broker                         = s"localhost:${kafkaServer.kafkaPort}"
 
   var actorSystem: ActorSystem       = _
 
@@ -93,7 +89,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     actorSystem = ActorSystem.create("testAccountHandler", config)
     val notificationHandler = new NotificationHandler(
       actorSystem.actorOf(
-        MockNotificationActor.props(), "notificationActor"
+        MockMailActor.props(), "notificationActor"
       )
     )
     accountHandler = new AccountHandler(

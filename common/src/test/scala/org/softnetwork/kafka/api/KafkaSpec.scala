@@ -1,7 +1,12 @@
 package org.softnetwork.kafka.api
 
+import java.util.Properties
+
 import cakesolutions.kafka.testkit.KafkaServer
 import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.scalalogging.StrictLogging
+import kafka.admin.AdminClient
+import org.apache.kafka.clients.admin.AdminClientConfig
 import org.apache.kafka.clients.producer.{ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.serialization.{Deserializer, Serializer}
 import org.scalatest.concurrent.Eventually
@@ -13,7 +18,7 @@ import scala.concurrent.duration._
 /**
   * Created by smanciot on 18/03/2018.
   */
-trait KafkaSpec extends Suite with TopicAdmin with BeforeAndAfterAll with Matchers with Eventually {
+trait KafkaSpec extends Suite with TopicAdmin with BeforeAndAfterAll with Matchers with Eventually with StrictLogging {
 
   val kafkaConfigMap: Map[String, String] = Map(
     "num.partitions" -> "1",
@@ -24,34 +29,76 @@ trait KafkaSpec extends Suite with TopicAdmin with BeforeAndAfterAll with Matche
 
   val kafkaServer = new KafkaServer(kafkaConfig = kafkaConfigMap)
 
-  lazy val zookeeperURL: String = s"localhost:${kafkaServer.zookeeperPort}"
+  lazy val broker: String = s"localhost:${kafkaServer.kafkaPort}"
 
-  def kafkaURL = s"localhost:${kafkaServer.kafkaPort}"
+  lazy val zookeeper: String = s"localhost:${kafkaServer.zookeeperPort}"
+
+  def blockUntil(explain: String, maxTries: Int = 16, sleep: Int = 2000)(predicate: () => Boolean): Unit = {
+
+    var tries = 0
+    var done  = false
+
+    while (tries <= maxTries && !done) {
+      if (tries > 0) Thread.sleep(sleep * tries)
+      tries = tries + 1
+      try {
+        done = predicate()
+      } catch {
+        case e: Throwable =>
+          logger.warn(s"problem while testing predicate ${e.getMessage}")
+      }
+    }
+
+    require(done, s"Failed waiting on: $explain")
+  }
+
+  lazy val defaultKafkaConfig = ConfigFactory.parseString(s"""
+                                                                   |    kafka {
+                                                                   |      topic-config.replication = 0
+                                                                   |      topic-config.partitions = 1
+                                                                   |      uri = "$broker"
+                                                                   |      zookeeper = "$zookeeper"
+                                                                   |      consumer {
+                                                                   |        bootstrap.servers = "$broker"
+                                                                   |      }
+                                                                   |      producer {
+                                                                   |        bootstrap.servers = "$broker"
+                                                                   |      }
+                                                                   |    }
+                                                                   |    """.stripMargin)
+
+  protected def waitForKafkaUp(maxTries: Int = 10, sleep: Int = 1000) = {
+    val props = new Properties()
+    props.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker)
+    val client = AdminClient.create(props)
+    blockUntil("kafka up", maxTries, sleep)(() => client.findAllBrokers().nonEmpty)
+  }
 
   def createTopics(topics: String*): Unit = {
     val topicList: Seq[Topic] = topics.toList.map {
       Topic(_, 1, 1)
     }
-    createTopics(zookeeperURL, topicList)
+    createTopics(zookeeper, topicList)
 
-    val zTopics = listTopicNames(zookeeperURL)
+    val zTopics = listTopicNames(zookeeper)
     topics.foreach { t =>
       zTopics should contain(t)
     }
   }
 
   def createTopic(topic: String): Unit = {
-    createTopic(zookeeperURL, Topic(topic, 1, 1))
+    createTopic(zookeeper, Topic(topic, 1, 1))
 
-    val zTopics = listTopicNames(zookeeperURL)
+    val zTopics = listTopicNames(zookeeper)
     zTopics should contain(topic)
   }
 
-  def deleteTopic(topic: String): Unit = deleteTopic(zookeeperURL, topic)
+  def deleteTopic(topic: String): Unit = deleteTopic(zookeeper, topic)
 
   protected override def beforeAll(): Unit = {
     super.beforeAll()
     kafkaServer.startup()
+//    waitForKafkaUp()
   }
 
   protected override def afterAll(): Unit = {
@@ -94,8 +141,8 @@ trait KafkaSpec extends Suite with TopicAdmin with BeforeAndAfterAll with Matche
          |  topic {
          |    name: "${topic.name}"
          |  },
-         |  uri = "$kafkaURL"
-         |  zookeeper = "$zookeeperURL"
+         |  uri = "$broker"
+         |  zookeeper = "$zookeeper"
          |}
         """.stripMargin
 
