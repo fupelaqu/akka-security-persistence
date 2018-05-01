@@ -1,6 +1,7 @@
 import sbt.Resolver
 
 import Common._
+import org.softnetwork.sbt.build._
 
 /////////////////////////////////
 // Defaults
@@ -32,48 +33,6 @@ version := "0.1"
 
 scalaVersion in ThisBuild := "2.11.12"
 
-val akkaVersion = "2.5.11"
-
-val akkaHttpVersion = "10.0.11"
-
-val akkaHttpJson4sVersion = "1.7.0" // 1.20.0 ?
-
-val akkaHttpSessionVersion = "0.5.3"
-
-val akkaPersistenceKafkaVersion = "0.6"
-
-val kafkaVersion = "1.0.0"
-
-val scalaKafkaClientVersion = "1.0.0"
-
-val typesafeKafkaStreamsVersion = "0.2.1"
-
-val wiremockVersion = "2.14.0"
-
-val scalatestVersion = "3.0.1"
-
-val scalacheckVersion = "1.13.4"
-
-val typesafeConfigVersion = "1.2.1"
-
-val kxbmapVersion = "0.4.3"
-
-val jacksonVersion = "2.8.4"
-
-val json4sVersion = "3.2.11"
-
-val macwireVersion = "2.2.3"
-
-val scalaLoggingVersion = "3.4.0"
-
-val logbackVersion = "1.1.7"
-
-val slf4jVersion = "1.7.21"
-
-val log4sVersion = "1.3.3"
-
-val chillVersion = "0.9.2"
-
 val jacksonExclusions = Seq(
   ExclusionRule(organization = "com.fasterxml.jackson.core"),
   ExclusionRule(organization = "org.codehaus.jackson")
@@ -87,90 +46,91 @@ val log4JExclusions = Seq(
 )
 
 val typesafeConfig = Seq(
-  "com.typesafe"      % "config"   % typesafeConfigVersion,
-  "com.github.kxbmap" %% "configs" % kxbmapVersion
+  "com.typesafe"      % "config"   % Versions.typesafeConfig,
+  "com.github.kxbmap" %% "configs" % Versions.kxbmap
 )
 
 val akka: Seq[ModuleID] = Seq(
-  "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-  "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test
+  "com.typesafe.akka" %% "akka-actor" % Versions.akka,
+  "com.typesafe.akka" %% "akka-remote" % Versions.akka,
+  "com.typesafe.akka" %% "akka-testkit" % Versions.akka % Test
 )
 
 val akkaPersistence: Seq[ModuleID] = Seq(
-  "com.typesafe.akka" %% "akka-persistence" % akkaVersion,
-  "com.github.krasserm" %% "akka-persistence-kafka" % akkaPersistenceKafkaVersion
+  "com.typesafe.akka" %% "akka-persistence" % Versions.akka,
+  "com.github.krasserm" %% "akka-persistence-kafka" % Versions.akkaPersistenceKafka
 )
 
 val akkaStream: Seq[ModuleID] = Seq(
-  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test
+  "com.typesafe.akka" %% "akka-stream" % Versions.akka,
+  "com.typesafe.akka" %% "akka-stream-testkit" % Versions.akka % Test
 )
 
 val akkaHttp: Seq[ModuleID] = Seq(
-  "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
-  "de.heikoseeberger" %% "akka-http-json4s" % akkaHttpJson4sVersion,
-  "com.softwaremill.akka-http-session" %% "core" % akkaHttpSessionVersion,
-  "com.softwaremill.akka-http-session" %% "jwt"  % akkaHttpSessionVersion,
-  "com.typesafe.akka" %% "akka-http-testkit" % akkaHttpVersion % Test
+  "com.typesafe.akka" %% "akka-http" % Versions.akkaHttp,
+  "de.heikoseeberger" %% "akka-http-json4s" % Versions.akkaHttpJson4s,
+  "com.softwaremill.akka-http-session" %% "core" % Versions.akkaHttpSession,
+  "com.softwaremill.akka-http-session" %% "jwt"  % Versions.akkaHttpSession,
+  "com.typesafe.akka" %% "akka-http-testkit" % Versions.akkaHttp % Test
 )
 
 val kafka: Seq[ModuleID] = Seq(
-  "org.apache.kafka" %% "kafka"        % kafkaVersion,
-  "org.apache.kafka" % "kafka-clients" % kafkaVersion,
-  "org.apache.kafka" %% "kafka"        % kafkaVersion % "test" classifier "test",
-  "org.apache.kafka" % "kafka-clients" % kafkaVersion % "test" classifier "test"
+  "org.apache.kafka" %% "kafka"        % Versions.kafka,
+  "org.apache.kafka" % "kafka-clients" % Versions.kafka,
+  "org.apache.kafka" %% "kafka"        % Versions.kafka % "test" classifier "test",
+  "org.apache.kafka" % "kafka-clients" % Versions.kafka % "test" classifier "test"
 ).map(_.excludeAll(log4JExclusions: _*))
 
 val kafkaClient: Seq[ModuleID] = kafka ++ Seq(
-  "net.cakesolutions" %% "scala-kafka-client"         % scalaKafkaClientVersion,
-  "net.cakesolutions" %% "scala-kafka-client-testkit" % scalaKafkaClientVersion % "test"
+  "net.cakesolutions" %% "scala-kafka-client"         % Versions.scalaKafkaClient,
+  "net.cakesolutions" %% "scala-kafka-client-testkit" % Versions.scalaKafkaClient % "test"
 ).map(_.excludeAll(log4JExclusions: _*))
 
 val kafkaStreams: Seq[ModuleID] = kafka ++ Seq(
-  "org.apache.kafka" % "kafka-streams"           % kafkaVersion,
-  "org.apache.kafka" % "kafka-streams"           % kafkaVersion % "test" classifier "test",
-  "fr.psug.kafka"    %% "typesafe-kafka-streams" % typesafeKafkaStreamsVersion
+  "org.apache.kafka" % "kafka-streams"           % Versions.kafka,
+  "org.apache.kafka" % "kafka-streams"           % Versions.kafka % "test" classifier "test",
+  "fr.psug.kafka"    %% "typesafe-kafka-streams" % Versions.typesafeKafkaStreams
 ).map(_.excludeAll(log4JExclusions: _*))
 
 val scalatest = Seq(
-  "org.scalatest"          %% "scalatest"  % scalatestVersion  % "test",
-  "com.github.tomakehurst" % "wiremock"    % wiremockVersion   % "test" exclude ("org.apache.httpcomponents", "httpclient"),
-  "org.scalacheck"         %% "scalacheck" % scalacheckVersion % "test"
+  "org.scalatest"          %% "scalatest"  % Versions.scalatest  % "it, test",
+  "com.github.tomakehurst" % "wiremock"    % Versions.wiremock   % "test" exclude ("org.apache.httpcomponents", "httpclient"),
+  "org.scalacheck"         %% "scalacheck" % Versions.scalacheck % "test"
 )
 
 val wiremock = Seq(
-  "com.github.tomakehurst" % "wiremock" % wiremockVersion
+  "com.github.tomakehurst" % "wiremock" % Versions.wiremock
 )
 
 val jackson = Seq(
-  "com.fasterxml.jackson.core"   % "jackson-databind"          % jacksonVersion,
-  "com.fasterxml.jackson.core"   % "jackson-core"              % jacksonVersion,
-  "com.fasterxml.jackson.core"   % "jackson-annotations"       % jacksonVersion,
-  "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % jacksonVersion
+  "com.fasterxml.jackson.core"   % "jackson-databind"          % Versions.jackson,
+  "com.fasterxml.jackson.core"   % "jackson-core"              % Versions.jackson,
+  "com.fasterxml.jackson.core"   % "jackson-annotations"       % Versions.jackson,
+  "com.fasterxml.jackson.module" % "jackson-module-scala_2.11" % Versions.jackson
 )
 
 val json4s = Seq(
-  "org.json4s" %% "json4s-jackson" % json4sVersion,
-  "org.json4s" %% "json4s-ext"     % json4sVersion
+  "org.json4s" %% "json4s-jackson" % Versions.json4s,
+  "org.json4s" %% "json4s-ext"     % Versions.json4s
 ).map(_.excludeAll(jacksonExclusions: _*)) ++ jackson
 
 val macwire = Seq(
-  "com.softwaremill.macwire" %% "macros" % macwireVersion % "provided",
-  "com.softwaremill.macwire" %% "util"   % macwireVersion,
-  "com.softwaremill.macwire" %% "proxy"  % macwireVersion
+  "com.softwaremill.macwire" %% "macros" % Versions.macwire % "provided",
+  "com.softwaremill.macwire" %% "util"   % Versions.macwire,
+  "com.softwaremill.macwire" %% "proxy"  % Versions.macwire
 )
 
 val logging = Seq(
-  "com.typesafe.scala-logging" %% "scala-logging" % scalaLoggingVersion,
-  "org.log4s"                  %% "log4s"         % log4sVersion,
-  "org.slf4j"                  % "slf4j-api"      % slf4jVersion,
-  "org.slf4j"                  % "jcl-over-slf4j" % slf4jVersion,
-  "org.slf4j"                  % "jul-to-slf4j"   % slf4jVersion
+  "com.typesafe.scala-logging" %% "scala-logging" % Versions.scalaLogging,
+  "org.log4s"                  %% "log4s"         % Versions.log4s,
+  "org.slf4j"                  % "slf4j-api"      % Versions.slf4j,
+  "org.slf4j"                  % "jcl-over-slf4j" % Versions.slf4j,
+  "org.slf4j"                  % "jul-to-slf4j"   % Versions.slf4j
 )
 
 val logback = Seq(
-  "ch.qos.logback" % "logback-classic"  % logbackVersion,
-  "org.slf4j"      % "log4j-over-slf4j" % slf4jVersion
+  "ch.qos.logback" % "logback-classic"  % Versions.logback,
+  "org.slf4j"      % "log4j-over-slf4j" % Versions.slf4j
 )
 
 val libphonenumber = Seq(
@@ -179,11 +139,11 @@ val libphonenumber = Seq(
 )
 
 val kryo = Seq(
-  "com.twitter" %% "chill-bijection" % chillVersion
+  "com.twitter" %% "chill-bijection" % Versions.chill
 )
 
 val chill_akka = Seq(
-  "com.twitter" % "chill-akka_2.11" % chillVersion
+  "com.twitter" % "chill-akka_2.11" % Versions.chill
 )
 
 resolvers in ThisBuild ++= Seq(
@@ -224,18 +184,40 @@ dependencyOverrides in ThisBuild ++= jackson.toSet
 parallelExecution in Test := false
 
 lazy val common = project.in(file("common"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
+  .enablePlugins(DockerComposePlugin)
 
-lazy val notification = project.in(file("notification")).dependsOn(common % "compile->compile;test->test")
+lazy val notification = project.in(file("notification"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
+  .enablePlugins(DockerComposePlugin)
+  .dependsOn(common % "compile->compile;test->test;it->it")
 
 lazy val session = project.in(file("session"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
   .dependsOn(
-    common % "compile->compile;test->test"
+    common % "compile->compile;test->test;it->it"
   )
 
 lazy val security = project.in(file("security"))
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
   .dependsOn(
-    notification % "compile->compile;test->test"
+    notification % "compile->compile;test->test,it->it"
   )
   .dependsOn(
-    session % "compile->compile;test->test"
+    session % "compile->compile;test->test;it->it"
   )
+  .enablePlugins(DockerComposePlugin)
+
+lazy val root = project.in(file("."))
+  .aggregate(
+    common,
+    notification,
+    session,
+    security
+  )
+  .configs(IntegrationTest)
+  .settings(Defaults.itSettings)
