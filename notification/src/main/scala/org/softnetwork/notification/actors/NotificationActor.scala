@@ -4,7 +4,7 @@ import java.util.{UUID, Date}
 
 import akka.actor.{Props, ActorLogging}
 import akka.persistence.{RecoveryCompleted, SnapshotOffer, PersistentActor}
-import org.softnetwork.akka.message.Event
+import org.softnetwork.akka.message.RecordEvent
 import org.softnetwork.notification.handlers._
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model._
@@ -12,41 +12,35 @@ import org.softnetwork.notification.model._
 /**
   * Created by smanciot on 07/04/2018.
   */
-class NotificationActor extends PersistentActor with ActorLogging {
+trait NotificationActor[T <: Notification] extends PersistentActor with ActorLogging { self: NotificationProvider[T] =>
 
-  val mailProvider: MailProvider = new MailProvider
-
-  val smsProvider: SMSProvider = new SMSProvider
-
-  val pushProvider: PushProvider = new PushProvider
-
-  var state = NotificationState()
+  var innerState = new NotificationState[T]()
 
   /** number of events received before generating a snapshot - should be configurable **/
   val snapshotInterval: Long = 1000
 
-  override def persistenceId: String = "notification"
+  private val provider: NotificationProvider[T] = this
 
-  def updateState(event: Event): Unit = {
+  def updateState(event: RecordEvent[String, T]): Unit = {
     event match {
-      case evt: NotificationRecordedEvent[Notification] =>
+      case evt: NotificationRecordedEvent[T] =>
         import evt._
-        state = state.copy(notifications = state.notifications.updated(uuid, notification))
-        notification.deferred match {
+        innerState = innerState.copy(notifications = innerState.notifications.updated(key, state))
+        state.deferred match {
           case Some(deferred) =>
-            if(deferred.after(new Date()) || notification.status == NotificationStatus.Pending){
-              state = state.copy(pendings = state.pendings + uuid)
+            if(deferred.after(new Date()) || state.status == NotificationStatus.Pending){
+              innerState = innerState.copy(pendings = innerState.pendings + key)
             }
             else{
-              state = state.copy(pendings = state.pendings - uuid)
+              innerState = innerState.copy(pendings = innerState.pendings - key)
             }
           case _              =>
         }
 
-      case evt: NotificationRemovedEvent                =>
+      case evt: NotificationRemovedEvent[T]             =>
         import evt._
-        state = state.copy(notifications = state.notifications - uuid)
-        state = state.copy(pendings = state.pendings - uuid)
+        innerState = innerState.copy(notifications = innerState.notifications - key)
+        innerState = innerState.copy(pendings = innerState.pendings - key)
 
       case _                                            =>
     }
@@ -55,18 +49,18 @@ class NotificationActor extends PersistentActor with ActorLogging {
   def generateUUID(notification: Notification): String = UUID.randomUUID().toString
 
   override def receiveRecover: Receive = {
-    case e: Event                                      => updateState(e)
-    case SnapshotOffer(_, snapshot: NotificationState) => state = snapshot
-    case RecoveryCompleted                             => log.info(s"AccountState has been recovered")
+    case e: RecordEvent[String, T]                        => updateState(e)
+    case SnapshotOffer(_, snapshot: NotificationState[T]) => innerState = snapshot
+    case RecoveryCompleted                                => log.info(s"ActorState $persistenceId has been recovered")
   }
 
   override def receiveCommand: Receive = {
 
-    case cmd: AddNotification[Notification] =>
+    case cmd: AddNotification[T] =>
       import cmd._
       val uuid = generateUUID(notification)
       persist(
-        NotificationRecordedEvent(
+        new NotificationRecordedEvent(
           uuid,
           notification
         )
@@ -79,10 +73,10 @@ class NotificationActor extends PersistentActor with ActorLogging {
 
     case cmd: RemoveNotification             =>
       import cmd._
-      state.notifications.get(uuid) match {
+      innerState.notifications.get(uuid) match {
         case Some(_) =>
           persist(
-            NotificationRemovedEvent(uuid)
+            new NotificationRemovedEvent[T](uuid)
           ) {event =>
             updateState(event)
             context.system.eventStream.publish(event)
@@ -93,13 +87,13 @@ class NotificationActor extends PersistentActor with ActorLogging {
         case _       => sender() ! NotificationNotFound
       }
 
-    case cmd: SendNotification[Notification] =>
+    case cmd: SendNotification[T] =>
       import cmd._
       sendNotification(generateUUID(notification), notification)
 
     case cmd: ResendNotification =>
       import cmd._
-      state.notifications.get(uuid) match {
+      innerState.notifications.get(uuid) match {
         case Some(notification) =>
           import notification._
           if(maxTries > 0 && nbTries > maxTries){
@@ -113,7 +107,7 @@ class NotificationActor extends PersistentActor with ActorLogging {
 
     case cmd: GetNotificationStatus =>
       import cmd._
-      state.notifications.get(uuid) match {
+      innerState.notifications.get(uuid) match {
         case Some(notification) =>
           import notification._
           import NotificationStatus._
@@ -129,22 +123,16 @@ class NotificationActor extends PersistentActor with ActorLogging {
     case _             => sender() ! new NotificationErrorMessage("UnknownCommand")
   }
 
-  def ack(uuid: String, notification: Notification) = {
+  def ack(uuid: String, notification: T) = {
     import notification._
-    val ack = ackUuid match {
-      case Some(s) =>
-        notification match {
-            case mail: Mail => mailProvider.ack(s, results)
-            case sms: SMS   => smsProvider.ack(s, results)
-            case push: Push => pushProvider.ack(s, results)
-            case _          => NotificationAck(Some(s), results, new Date())
-        }
+    val ack: NotificationAck = ackUuid match {
+      case Some(s) => provider.ack(s, results)
       case _       => NotificationAck(None, results, new Date())
     }
     persist(
-      NotificationRecordedEvent(
+      new NotificationRecordedEvent(
         uuid,
-        notification.copyWithAck(ack)
+        notification.copyWithAck(ack).asInstanceOf[T]
       )
     ) {event =>
       updateState(event)
@@ -160,34 +148,28 @@ class NotificationActor extends PersistentActor with ActorLogging {
     }
   }
 
-  def sendNotification(uuid: String, notification: Notification) = {
+  def sendNotification(uuid: String, notification: T) = {
     val maybeAck =
       notification.deferred match {
         case Some(deferred) if deferred.after(new Date()) => None
-        case _                                            =>
-          notification match {
-            case mail: Mail => Some(mailProvider.send(mail))
-            case sms: SMS   => Some(smsProvider.send(sms))
-            case push: Push => Some(pushProvider.send(push))
-            case _          => None
-          }
+        case _                                            => Some(provider.send(notification))
       }
     val recordedEvent =
       maybeAck match {
         case Some(ack) =>
-          NotificationRecordedEvent(
+          new NotificationRecordedEvent(
             uuid,
             notification
               .incNbTries()
-              .copyWithAck(ack)
+              .copyWithAck(ack).asInstanceOf[T]
           )
-        case _       => NotificationRecordedEvent(uuid, notification)
+        case _       => new NotificationRecordedEvent(uuid, notification)
       }
     persist(recordedEvent) {event =>
       updateState(event)
       context.system.eventStream.publish(event)
       import NotificationStatus._
-      event.notification.status match {
+      event.state.status match {
         case Rejected  => sender() ! NotificationRejected(uuid)
         case Sent      => sender() ! NotificationSent(uuid)
         case Delivered => sender() ! NotificationDelivered(uuid)
@@ -199,20 +181,44 @@ class NotificationActor extends PersistentActor with ActorLogging {
 
   private def performSnapshotIfRequired(): Unit = {
     if (lastSequenceNr % snapshotInterval == 0 && lastSequenceNr != 0)
-      saveSnapshot(state)
+      saveSnapshot(innerState)
   }
 }
 
-case class NotificationState(notifications: Map[String, Notification] = Map.empty, pendings: Set[String] = Set.empty)
+case class NotificationState[T <: Notification](notifications: Map[String, T] = Map[String, T](), pendings: Set[String] = Set.empty)
 
-object NotificationActor {
-  def props(): Props = Props(new NotificationActor)
+object MailActor {
+  def props(): Props = Props(new NotificationActor[Mail] with MailProvider{
+    override def persistenceId: String = "mail"
+  })
 }
 
-object MockNotificationActor {
-  def props(): Props = Props(new NotificationActor {
-    override val mailProvider: MailProvider = new MockMailProvider
-    override val smsProvider: SMSProvider = new MockSMSProvider
-    override val pushProvider: PushProvider = new MockPushProvider
+object MockMailActor {
+  def props(): Props = Props(new NotificationActor[Mail] with MockMailProvider{
+    override def persistenceId: String = "mock-mail"
+  })
+}
+
+object SMSActor {
+  def props(): Props = Props(new NotificationActor[SMS] with SMSProvider{
+    override def persistenceId: String = "sms"
+  })
+}
+
+object MockSMSActor {
+  def props(): Props = Props(new NotificationActor[SMS] with MockSMSProvider{
+    override def persistenceId: String = "mock-sms"
+  })
+}
+
+object PushActor {
+  def props(): Props = Props(new NotificationActor[Push] with PushProvider{
+    override def persistenceId: String = "push"
+  })
+}
+
+object MockPushActor {
+  def props(): Props = Props(new NotificationActor[Push] with MockPushProvider{
+    override def persistenceId: String = "mock-push"
   })
 }

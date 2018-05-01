@@ -20,7 +20,7 @@ import scala.collection.JavaConversions._
 /**
   * Created by smanciot on 14/04/2018.
   */
-class PushProvider extends NotificationProvider[Push] {
+trait PushProvider extends NotificationProvider[Push] {
 
   val maxDevices = 1000
 
@@ -166,4 +166,4 @@ object APNSPushProvider {
   }
 }
 
-class MockPushProvider extends PushProvider with MockNotificationProvider[Push]
+trait MockPushProvider extends PushProvider with MockNotificationProvider[Push]

@@ -11,6 +11,13 @@ package object message {
   /** Event objects **/
   trait Event
 
+  /**
+    *
+    * @param key - state key
+    * @param state - state value
+    */
+  case class RecordEvent[Key, State](key: Key, state: State) extends Event
+
   /** Message objects **/
   trait CommandResult
 

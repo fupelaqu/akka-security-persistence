@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.akka.actors.ActorSystemLocator
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockNotificationActor
+import org.softnetwork.notification.actors.MockMailActor
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model.Mail
 
@@ -89,7 +89,7 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     actorSystem = ActorSystem.create("testNotificationHandler", config)
     ActorSystemLocator(actorSystem)
     notificationHandler = new NotificationHandler(
-      actorSystem.actorOf(MockNotificationActor.props(), "notificationActor")
+      actorSystem.actorOf(MockMailActor.props(), "notificationActor")
     )
   }
 

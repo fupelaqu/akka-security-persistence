@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
 /**
   * From https://gist.github.com/mariussoutier/3436111
   */
-class MailProvider extends NotificationProvider[Mail] with StrictLogging {
+trait MailProvider extends NotificationProvider[Mail] with StrictLogging {
 
   val mailConfig: MailConfig = Settings.config.get.mail
 
@@ -82,4 +82,4 @@ class MailProvider extends NotificationProvider[Mail] with StrictLogging {
 
 }
 
-class MockMailProvider extends MailProvider with MockNotificationProvider[Mail]
+trait MockMailProvider extends MailProvider with MockNotificationProvider[Mail]

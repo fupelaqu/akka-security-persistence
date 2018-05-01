@@ -1,6 +1,6 @@
 package org.softnetwork.notification.message
 
-import org.softnetwork.akka.message.{Event, CommandResult}
+import org.softnetwork.akka.message.{RecordEvent, Event, CommandResult}
 import org.softnetwork.notification.model.Notification
 
 /**
@@ -8,13 +8,14 @@ import org.softnetwork.notification.model.Notification
   */
 trait NotificationCommandResult extends CommandResult
 
-case class NotificationRecordedEvent[T<:Notification](uuid: String, notification: T) extends Event
+class NotificationRecordedEvent[T<:Notification](uuid: String, notification: T)
+  extends RecordEvent[String, T](uuid, notification)
 
 case class NotificationAdded(uuid: String) extends NotificationCommandResult
 
 case object NotificationRemoved extends NotificationCommandResult
 
-case class NotificationRemovedEvent(uuid: String) extends Event
+class NotificationRemovedEvent[T<:Notification](uuid: String) extends RecordEvent[String, T](uuid, null.asInstanceOf[T])
 
 case class NotificationSent(uuid: String) extends NotificationCommandResult
 

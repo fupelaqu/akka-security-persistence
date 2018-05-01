@@ -18,5 +18,5 @@ trait KProp {
   val conf: Config
   lazy val kafkaConfig: KafkaConfig = Configs[KafkaConfig]
     .get(conf, "kafka")
-    .valueOrThrow(_ => new IllegalStateException("Could not find kafka stream configuration keys"))
+    .valueOrThrow(_ => new IllegalStateException("Could not find kafka configuration"))
 }
