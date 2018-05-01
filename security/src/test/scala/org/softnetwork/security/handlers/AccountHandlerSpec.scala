@@ -5,8 +5,8 @@ import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockMailActor
-import org.softnetwork.notification.handlers.NotificationHandler
+import org.softnetwork.notification.actors.{MockPushActor, MockSMSActor, MockMailActor}
+import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.message._
 import org.softnetwork.security.model.AccountStatus
@@ -87,14 +87,30 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
   override def beforeAll(): Unit = {
     super.beforeAll()
     actorSystem = ActorSystem.create("testAccountHandler", config)
-    val notificationHandler = new NotificationHandler(
+
+    val mailHandler: MailHandler = new MailHandler(
       actorSystem.actorOf(
-        MockMailActor.props(), "notificationActor"
+        MockMailActor.props(), "mailActor"
       )
     )
+
+    val smsHandler: SMSHandler = new SMSHandler(
+      actorSystem.actorOf(
+        MockSMSActor.props(), "smsActor"
+      )
+    )
+
+    val pushHandler: PushHandler = new PushHandler(
+      actorSystem.actorOf(
+        MockPushActor.props(), "pushActor"
+      )
+    )
+
     accountHandler = new AccountHandler(
       actorSystem.actorOf(BaseAccountStateActor.props(
-        notificationHandler,
+        mailHandler,
+        smsHandler,
+        pushHandler,
         new MockGenerator
       ), "baseAccountStateActor")
     )

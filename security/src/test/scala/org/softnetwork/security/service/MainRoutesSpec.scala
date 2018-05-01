@@ -11,8 +11,8 @@ import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.akka.http.HealthCheckService
 import org.softnetwork.akka.http.Implicits._
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockMailActor
-import org.softnetwork.notification.handlers.NotificationHandler
+import org.softnetwork.notification.actors.{MockPushActor, MockSMSActor, MockMailActor}
+import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.config.Settings
 import org.softnetwork.security.handlers.{AccountHandler, MockGenerator}
@@ -102,13 +102,35 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
   override def beforeAll(): Unit = {
     super.beforeAll()
     actorSystem = ActorSystem.create("testMainRoutes", config)
-    val notificationHandler = new NotificationHandler(
+
+    val mailHandler: MailHandler = new MailHandler(
       actorSystem.actorOf(
-        MockMailActor.props(), "notificationActor"
+        MockMailActor.props(), "mailActor"
       )
     )
+
+    val smsHandler: SMSHandler = new SMSHandler(
+      actorSystem.actorOf(
+        MockSMSActor.props(), "smsActor"
+      )
+    )
+
+    val pushHandler: PushHandler = new PushHandler(
+      actorSystem.actorOf(
+        MockPushActor.props(), "pushActor"
+      )
+    )
+
     accountHandler = new AccountHandler(
-      actorSystem.actorOf(BaseAccountStateActor.props(notificationHandler, new MockGenerator), "baseAccountStateActor")
+      actorSystem.actorOf(
+        BaseAccountStateActor.props(
+          mailHandler,
+          smsHandler,
+          pushHandler,
+          new MockGenerator
+        ),
+        "baseAccountStateActor"
+      )
     )
     mainRoutes = new MainRoutes(
       new HealthCheckService(),

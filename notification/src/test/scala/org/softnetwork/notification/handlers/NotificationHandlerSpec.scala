@@ -17,11 +17,11 @@ import scala.concurrent.duration._
   */
 class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
 
-  var actorSystem: ActorSystem = _
+  var actorSystem: ActorSystem         = _
 
-  implicit val timeout           = Timeout(10.seconds)
+  implicit val timeout                 = Timeout(10.seconds)
 
-  var notificationHandler: NotificationHandler = _
+  var notificationHandler: MailHandler = _
 
   val config = ConfigFactory.parseString(s"""
                                             |    akka {
@@ -84,7 +84,7 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     super.beforeAll()
     actorSystem = ActorSystem.create("testNotificationHandler", config)
     ActorSystemLocator(actorSystem)
-    notificationHandler = new NotificationHandler(
+    notificationHandler = new MailHandler(
       actorSystem.actorOf(MockMailActor.props(), "notificationActor")
     )
   }
