@@ -18,7 +18,7 @@ trait ActorsModule {
   )
 
   lazy val accountStateActor: ActorRef = ActorSystemLocator().actorOf(
-    BaseAccountStateActor.props(notificationHandler, new DefaultGenerator), "accountStateActor"
+    BaseAccountStateActor.props(notificationHandler), "accountStateActor"
   )
 
 }

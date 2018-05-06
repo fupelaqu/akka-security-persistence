@@ -7,7 +7,8 @@ import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.kafka.api.KafkaSpec
 import org.softnetwork.notification.actors.MockNotificationSupervisor
 import org.softnetwork.notification.handlers.NotificationHandler
-import org.softnetwork.security.actors.BaseAccountStateActor
+import org.softnetwork.security.actors.MockBaseAccountStateActor
+import org.softnetwork.security.config.Settings
 import org.softnetwork.security.message._
 import org.softnetwork.security.model.AccountStatus
 
@@ -101,11 +102,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     )
 
     accountHandler = new AccountHandler(
-      actorSystem.actorOf(BaseAccountStateActor.props(
-        notificationHandler,
-        new MockGenerator
-      ), "baseAccountStateActor")
-    )
+      actorSystem.actorOf(MockBaseAccountStateActor.props(notificationHandler), "baseAccountStateActor"))
   }
 
   protected override def afterAll(): Unit = {
@@ -227,7 +224,7 @@ class AccountHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     "disable account after n login failures" in {
       accountHandler.handle(SignIn(gsm, password, password))
       accountHandler.handle(Login(gsm, password)) // reset number of failures
-      val failures = (0 to BaseAccountStateActor.maxFailures) // max number of failures + 1
+      val failures = (0 to Settings.MaxLoginFailures) // max number of failures + 1
           .map(_ => accountHandler.handle(Login(gsm, "fake")))
       failures.last match {
         case _: AccountDisabled.type =>

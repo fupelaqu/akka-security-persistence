@@ -11,7 +11,7 @@ trait Generator {
   def generatePinCode(pinSize: Int, expiryTimeInMinutes:Int = 5): VerificationCode
 }
 
-class DefaultGenerator extends Generator {
+trait DefaultGenerator extends Generator {
 
   override def generateToken(login: String, expiryTimeInMinutes:Int): VerificationToken =
     VerificationToken(login, expiryTimeInMinutes)
@@ -20,7 +20,7 @@ class DefaultGenerator extends Generator {
     VerificationCode(pinSize, expiryTimeInMinutes)
 }
 
-class MockGenerator extends Generator with ExpirationDate {
+trait MockGenerator extends Generator with ExpirationDate {
   val token = "token"
 
   val code  = "code"

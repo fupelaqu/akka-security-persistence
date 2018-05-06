@@ -9,7 +9,7 @@ import org.softnetwork.akka.message.CommandResult
 import org.softnetwork.kafka.api.KafkaSpec
 import org.softnetwork.notification.actors._
 import org.softnetwork.notification.handlers.NotificationHandler
-import org.softnetwork.security.handlers.MockGenerator
+import org.softnetwork.security.config.Settings
 import org.softnetwork.security.message._
 import org.softnetwork.security.model.AccountStatus
 
@@ -105,7 +105,7 @@ class BaseAccountStateActorSpec extends WordSpec with Matchers with KafkaSpec {
     )
 
     baseAccountActor = actorSystem.actorOf(
-      BaseAccountStateActor.props(notificationHandler, new MockGenerator),
+      MockBaseAccountStateActor.props(notificationHandler),
       "baseAccountStateActor"
     )
   }
@@ -229,7 +229,7 @@ class BaseAccountStateActorSpec extends WordSpec with Matchers with KafkaSpec {
     "disable profile after n login failures" in {
       Await.result(baseAccountActor ? SignIn(gsm, password, password), atMost)
       Await.result(baseAccountActor ? Login(gsm, password), atMost) // reset number of failures
-      val failures = (0 to BaseAccountStateActor.maxFailures) // max number of failures + 1
+      val failures = (0 to Settings.MaxLoginFailures) // max number of failures + 1
         .map(_ => Await.result((baseAccountActor ? Login(gsm, "fake")).mapTo[CommandResult], atMost))
       failures.last match {
         case _: AccountDisabled.type =>

@@ -28,6 +28,8 @@ object Settings extends StrictLogging {
 
   val SMSClientId = config.getString("security.sms.clientId")
 
+  val MaxLoginFailures = config.getInt("security.maxLoginFailures")
+
   def passwordRules(config: Config = config) = Configs[PasswordRules].get(config, "security.password").toEither match{
     case Left(configError)  =>
       logger.error(s"Something went wrong with the provided arguments $configError")

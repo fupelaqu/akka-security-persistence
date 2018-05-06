@@ -13,9 +13,9 @@ import org.softnetwork.akka.http.Implicits._
 import org.softnetwork.kafka.api.KafkaSpec
 import org.softnetwork.notification.actors.MockNotificationSupervisor
 import org.softnetwork.notification.handlers.NotificationHandler
-import org.softnetwork.security.actors.BaseAccountStateActor
+import org.softnetwork.security.actors.MockBaseAccountStateActor
 import org.softnetwork.security.config.Settings
-import org.softnetwork.security.handlers.{AccountHandler, MockGenerator}
+import org.softnetwork.security.handlers.AccountHandler
 import org.softnetwork.security.message._
 import org.softnetwork.security.model.{BaseAccountInfo, AccountStatus}
 import org.softnetwork.session.actors.SessionRefreshTokenStateActor
@@ -117,10 +117,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
 
     accountHandler = new AccountHandler(
       actorSystem.actorOf(
-        BaseAccountStateActor.props(
-          notificationHandler,
-          new MockGenerator
-        ),
+        MockBaseAccountStateActor.props(notificationHandler),
         "baseAccountStateActor"
       )
     )
@@ -260,7 +257,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "disable account after n login failures" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(gsm, password)) ~> mainRoutes.routes  // reset number of failures
-      val failures = (0 to BaseAccountStateActor.maxFailures) // max number of failures + 1
+      val failures = (0 to Settings.MaxLoginFailures) // max number of failures + 1
           .map(_ => Post(s"/api/${Settings.Path}/login", Login(gsm, "fake")) ~> mainRoutes.routes )
       failures.last ~> check {
         status shouldEqual StatusCodes.BadRequest

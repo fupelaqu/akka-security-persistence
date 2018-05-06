@@ -22,21 +22,21 @@ import scala.io.Source
 /**
   * Created by smanciot on 31/03/2018.
   */
-trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging {
+trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging {self: Generator =>
 
   def notificationHandler(): NotificationHandler
 
-  def generator(): Generator
+  val generator: Generator = this
 
   var state: AccountState[T]
 
   val rules = passwordRules()
 
   /** number of events received before generating a snapshot - should be configurable **/
-  def snapshotInterval: Long
+  val snapshotInterval: Long = 1000L
 
-  /** number of login failures authorized before disabling user account - should be configurable **/
-  def maxFailures: Int
+  /** number of login failures authorized before disabling user account **/
+  val maxLoginFailures: Int = MaxLoginFailures
 
   private def lookupAccount(key: String): Option[T] = {
     state.accounts.get(key) match {
@@ -338,7 +338,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                     val activationRequired = status == AccountStatus.Inactive
                     var notified = false
                     if(activationRequired) { // an activation is required
-                    val activationToken = generator().generateToken(
+                    val activationToken = generator.generateToken(
                         account.primaryPrincipal.value,
                         ActivationTokenExpirationTime
                       )
@@ -424,7 +424,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
           }
           else { // wrong password
             val nbLoginFailures = account.nbLoginFailures + 1
-            val disabled = nbLoginFailures > maxFailures // disable account
+            val disabled = nbLoginFailures > maxLoginFailures // disable account
             val status = if(disabled) AccountStatus.Disabled else account.status
             persist(
               new LoginFailed(
@@ -468,7 +468,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                 }
               case _                =>
             }
-            val verificationCode = generator().generatePinCode(VerificationCodeSize, VerificationCodeExpirationTime)
+            val verificationCode = generator.generatePinCode(VerificationCodeSize, VerificationCodeExpirationTime)
             persist(
               VerificationCodeEvent(
                 VerificationCodeWithUuid(
