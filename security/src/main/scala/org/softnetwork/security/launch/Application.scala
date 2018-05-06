@@ -11,7 +11,7 @@ import org.softnetwork.security.service.MainRoutes
 /**
   * Created by smanciot on 22/03/2018.
   */
-class Application extends App {
+object Application extends App {
 
   implicit val system = ActorSystem()
   implicit val executor = system.dispatcher

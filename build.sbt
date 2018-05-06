@@ -210,7 +210,7 @@ lazy val security = project.in(file("security"))
   .dependsOn(
     session % "compile->compile;test->test;it->it"
   )
-  .enablePlugins(DockerComposePlugin)
+  .enablePlugins(DockerComposePlugin, sbtdocker.DockerPlugin, JavaAppPackaging)
 
 lazy val root = project.in(file("."))
   .aggregate(
