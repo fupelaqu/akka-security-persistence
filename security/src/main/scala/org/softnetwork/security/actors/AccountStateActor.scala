@@ -6,7 +6,7 @@ import akka.actor.ActorLogging
 import akka.persistence.{PersistentActor, RecoveryCompleted, SnapshotOffer}
 import mustache.Mustache
 import org.softnetwork.akka.message._
-import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
+import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model.NotificationType.NotificationType
 import org.softnetwork.notification.model._
@@ -24,11 +24,7 @@ import scala.io.Source
   */
 trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging {
 
-  def mailHandler(): MailHandler
-
-  def smsHandler(): SMSHandler
-
-  def pushHandler(): PushHandler
+  def notificationHandler(): NotificationHandler
 
   def generator(): Generator
 
@@ -61,8 +57,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                        deferred: Option[Date] = None): Boolean = {
     account.email match {
       case Some(email) =>
-        mailHandler().handle(
-          SendNotification(
+        notificationHandler().handle(
+          new SendNotification(
             Mail(
               (MailFrom, Some("nobody")),
               Seq(email),
@@ -74,7 +70,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
               maxTries = maxTries,
               deferred = deferred
             )
-          )
+          ) with MailCommand
         ) match {
           case _: NotificationSent      => true
           case _: NotificationDelivered => true
@@ -91,8 +87,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
                       deferred: Option[Date] = None): Boolean = {
     account.gsm match {
       case Some(gsm) =>
-        smsHandler().handle(
-          SendNotification(
+        notificationHandler().handle(
+          new SendNotification(
             SMS(
               (SMSClientId, Some("nobody")),
               Seq(gsm),
@@ -101,7 +97,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
               maxTries = maxTries,
               deferred = deferred
             )
-          )
+          ) with SMSCommand
         ) match {
           case _: NotificationSent      => true
           case _: NotificationDelivered => true
@@ -123,8 +119,8 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
             (registration) => BasicDevice(registration.regId, registration.platform)
           )
         ).toSeq
-        pushHandler().handle(
-          SendNotification(
+        notificationHandler().handle(
+          new SendNotification(
             Push(
               from = (PushClientId, None),
               subject = subject,
@@ -134,7 +130,7 @@ trait AccountStateActor[T <: Account] extends PersistentActor with ActorLogging 
               maxTries = maxTries,
               deferred = deferred
             )
-          )
+          ) with PushCommand
         ) match {
           case _: NotificationSent      => true
           case _: NotificationDelivered => true

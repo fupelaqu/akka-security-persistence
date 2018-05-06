@@ -11,8 +11,8 @@ import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.akka.http.HealthCheckService
 import org.softnetwork.akka.http.Implicits._
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.{MockPushActor, MockSMSActor, MockMailActor}
-import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
+import org.softnetwork.notification.actors.MockNotificationSupervisor
+import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.config.Settings
 import org.softnetwork.security.handlers.{AccountHandler, MockGenerator}
@@ -44,6 +44,11 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
                                             |        }
                                             |      }
                                             |    }
+                                            |
+                                            |    # Don't terminate ActorSystem in tests
+                                            |    akka.coordinated-shutdown.run-by-jvm-shutdown-hook = off
+                                            |    akka.coordinated-shutdown.terminate-actor-system = off
+                                            |    akka.cluster.run-coordinated-shutdown-when-down = off
                                             |
                                             |    kafka-journal {
                                             |      zookeeper {
@@ -103,30 +108,17 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     super.beforeAll()
     actorSystem = ActorSystem.create("testMainRoutes", config)
 
-    val mailHandler: MailHandler = new MailHandler(
+    val notificationHandler = new NotificationHandler(
       actorSystem.actorOf(
-        MockMailActor.props(), "mailActor"
-      )
-    )
-
-    val smsHandler: SMSHandler = new SMSHandler(
-      actorSystem.actorOf(
-        MockSMSActor.props(), "smsActor"
-      )
-    )
-
-    val pushHandler: PushHandler = new PushHandler(
-      actorSystem.actorOf(
-        MockPushActor.props(), "pushActor"
+        MockNotificationSupervisor.props(),
+        "notifications"
       )
     )
 
     accountHandler = new AccountHandler(
       actorSystem.actorOf(
         BaseAccountStateActor.props(
-          mailHandler,
-          smsHandler,
-          pushHandler,
+          notificationHandler,
           new MockGenerator
         ),
         "baseAccountStateActor"

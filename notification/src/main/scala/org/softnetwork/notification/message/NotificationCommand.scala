@@ -6,7 +6,7 @@ import org.softnetwork.notification.model.Notification
 /**
   * Created by smanciot on 07/04/2018.
   */
-trait NotificationCommand extends Command
+sealed trait NotificationCommand extends Command
 
 case class AddNotification[T<:Notification](notification: T) extends NotificationCommand
 
@@ -17,3 +17,9 @@ case class SendNotification[T<:Notification](notification: T) extends Notificati
 case class ResendNotification(uuid: String) extends NotificationCommand
 
 case class GetNotificationStatus(uuid: String) extends NotificationCommand
+
+trait MailCommand
+
+trait SMSCommand
+
+trait PushCommand

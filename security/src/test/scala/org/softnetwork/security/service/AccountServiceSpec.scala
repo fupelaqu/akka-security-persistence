@@ -5,8 +5,8 @@ import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.{MockPushActor, MockSMSActor, MockMailActor}
-import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
+import org.softnetwork.notification.actors.MockNotificationSupervisor
+import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.actors.BaseAccountStateActor
 import org.softnetwork.security.handlers.{AccountHandler, MockGenerator}
 import org.softnetwork.security.message._
@@ -40,6 +40,11 @@ class AccountServiceSpec extends WordSpec with Matchers with KafkaSpec {
                                             |        }
                                             |      }
                                             |    }
+                                            |
+                                            |    # Don't terminate ActorSystem in tests
+                                            |    akka.coordinated-shutdown.run-by-jvm-shutdown-hook = off
+                                            |    akka.coordinated-shutdown.terminate-actor-system = off
+                                            |    akka.cluster.run-coordinated-shutdown-when-down = off
                                             |
                                             |    kafka-journal {
                                             |      zookeeper {
@@ -91,21 +96,10 @@ class AccountServiceSpec extends WordSpec with Matchers with KafkaSpec {
     super.beforeAll()
     actorSystem = ActorSystem.create("testAccountService", config)
 
-    val mailHandler: MailHandler = new MailHandler(
+    val notificationHandler = new NotificationHandler(
       actorSystem.actorOf(
-        MockMailActor.props(), "mailActor"
-      )
-    )
-
-    val smsHandler: SMSHandler = new SMSHandler(
-      actorSystem.actorOf(
-        MockSMSActor.props(), "smsActor"
-      )
-    )
-
-    val pushHandler: PushHandler = new PushHandler(
-      actorSystem.actorOf(
-        MockPushActor.props(), "pushActor"
+        MockNotificationSupervisor.props(),
+        "notifications"
       )
     )
 
@@ -113,9 +107,7 @@ class AccountServiceSpec extends WordSpec with Matchers with KafkaSpec {
       new AccountHandler(
         actorSystem.actorOf(
           BaseAccountStateActor.props(
-            mailHandler,
-            smsHandler,
-            pushHandler,
+            notificationHandler,
             new MockGenerator
           ),
           "baseAccountStateActor"

@@ -1,7 +1,7 @@
 package org.softnetwork.security.actors
 
 import akka.actor.Props
-import org.softnetwork.notification.handlers.{PushHandler, SMSHandler, MailHandler}
+import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.handlers.Generator
 import org.softnetwork.security.message.SignIn
 import org.softnetwork.security.model.BaseAccount
@@ -10,9 +10,7 @@ import org.softnetwork.security.model.BaseAccount
   * Created by smanciot on 17/03/2018.
   */
 class BaseAccountStateActor(
-  override val mailHandler: MailHandler,
-  override val smsHandler: SMSHandler,
-  override val pushHandler: PushHandler,
+  override val notificationHandler: NotificationHandler,
   override val generator: Generator
 ) extends AccountStateActor[BaseAccount] {
 
@@ -30,8 +28,8 @@ class BaseAccountStateActor(
 }
 
 object BaseAccountStateActor {
-  def props(mailHandler: MailHandler, smsHandler: SMSHandler, pushHandler: PushHandler, generator: Generator) = Props(
-    new BaseAccountStateActor(mailHandler, smsHandler, pushHandler, generator)
+  def props(notificationHandler: NotificationHandler, generator: Generator) = Props(
+    new BaseAccountStateActor(notificationHandler, generator)
   )
   val snapshotInterval = 1000L
   val maxFailures = 5

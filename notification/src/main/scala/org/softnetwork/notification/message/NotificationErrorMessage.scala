@@ -14,3 +14,5 @@ case class NotificationRejected(uuid: String) extends NotificationErrorMessage("
 case object NotificationNotFound extends NotificationErrorMessage("NotificationNotFound")
 
 case object NotificationMaxTriesReached extends NotificationErrorMessage("NotificationMaxTriesReached")
+
+case object NotificationUnknownCommand extends NotificationErrorMessage("NotificationUnknownCommand")

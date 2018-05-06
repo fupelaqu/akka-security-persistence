@@ -6,7 +6,7 @@ import com.typesafe.config.ConfigFactory
 import org.scalatest.{Matchers, WordSpec}
 import org.softnetwork.akka.actors.ActorSystemLocator
 import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockMailActor
+import org.softnetwork.notification.actors.MockNotificationSupervisor
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model.Mail
 
@@ -21,7 +21,7 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
 
   implicit val timeout                 = Timeout(10.seconds)
 
-  var notificationHandler: MailHandler = _
+  var notificationHandler: NotificationHandler = _
 
   val config = ConfigFactory.parseString(s"""
                                             |    akka {
@@ -35,6 +35,11 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
                                             |        }
                                             |      }
                                             |    }
+                                            |
+                                            |    # Don't terminate ActorSystem in tests
+                                            |    akka.coordinated-shutdown.run-by-jvm-shutdown-hook = off
+                                            |    akka.coordinated-shutdown.terminate-actor-system = off
+                                            |    akka.cluster.run-coordinated-shutdown-when-down = off
                                             |
                                             |    kafka-journal {
                                             |      zookeeper {
@@ -84,8 +89,11 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     super.beforeAll()
     actorSystem = ActorSystem.create("testNotificationHandler", config)
     ActorSystemLocator(actorSystem)
-    notificationHandler = new MailHandler(
-      actorSystem.actorOf(MockMailActor.props(), "notificationActor")
+    notificationHandler = new NotificationHandler(
+      actorSystem.actorOf(
+        MockNotificationSupervisor.props(),
+        "notifications"
+      )
     )
   }
 
@@ -97,14 +105,14 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
   "NotificationHandler" should {
     "add notification" in {
       notificationHandler.handle(
-        AddNotification(
+        new AddNotification(
           Mail(
             from = from,
             to = to,
             subject = subject,
             message = message
           )
-        )
+        ) with MailCommand
       ) match {
         case _: NotificationAdded =>
         case _                    => fail
@@ -112,20 +120,20 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "remove notification" in {
       (notificationHandler.handle(
-        AddNotification(
+        new AddNotification(
           Mail(
             from = from,
             to = to,
             subject = subject,
             message = message
           )
-        )
+        ) with MailCommand
       ) match {
         case n: NotificationAdded => Some(n.uuid)
         case _                    => None
       }) match {
         case Some(uuid) =>
-          notificationHandler.handle(RemoveNotification(uuid)) match {
+          notificationHandler.handle(new RemoveNotification(uuid) with MailCommand) match {
             case _: NotificationRemoved.type =>
             case _                           => fail
           }
@@ -135,14 +143,14 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "send notification" in {
       notificationHandler.handle(
-        SendNotification(
+        new SendNotification(
           Mail(
             from = from,
             to = to,
             subject = subject,
             message = message
           )
-        )
+        ) with MailCommand
       ) match {
         case _: NotificationSent =>
         case _                   => fail
@@ -150,20 +158,20 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "resend notification" in {
       (notificationHandler.handle(
-        SendNotification(
+        new SendNotification(
           Mail(
             from = from,
             to = to,
             subject = subject,
             message = message
           )
-        )
+        ) with MailCommand
       ) match {
         case n: NotificationSent => Some(n.uuid)
         case _                   => None
       }) match {
         case Some(uuid) =>
-          notificationHandler.handle(ResendNotification(uuid)) match {
+          notificationHandler.handle(new ResendNotification(uuid) with MailCommand) match {
             case _: NotificationSent =>
             case _                   => fail
           }
@@ -172,20 +180,20 @@ class NotificationHandlerSpec extends WordSpec with Matchers with KafkaSpec {
     }
     "retrieve notification status" in {
       (notificationHandler.handle(
-        SendNotification(
+        new SendNotification(
           Mail(
             from = from,
             to = to,
             subject = subject,
             message = message
           )
-        )
+        ) with MailCommand
       ) match {
         case n: NotificationSent => Some(n.uuid)
         case _                   => None
       }) match {
         case Some(uuid) =>
-          notificationHandler.handle(GetNotificationStatus(uuid)) match {
+          notificationHandler.handle(new GetNotificationStatus(uuid) with MailCommand) match {
             case _: NotificationSent =>
             case _                   => fail
           }
