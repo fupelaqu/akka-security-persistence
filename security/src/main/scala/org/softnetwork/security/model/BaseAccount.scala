@@ -83,7 +83,7 @@ object BaseAccount{
 
 class BaseAccountInfo(
   override val lastLogin: Option[Date] = None,
-  override val status: AccountStatus.Value = AccountStatus.Inactive,
+  override val status: String = AccountStatus.Inactive.toString,
   override val createdDate: Date = new Date(),
   override val updatedDate: Date = new Date(),
   val firstName: Option[String] = None,
@@ -93,7 +93,7 @@ class BaseAccountInfo(
 object BaseAccountInfo{
   def apply(account: BaseAccount): BaseAccountInfo = new BaseAccountInfo(
     lastLogin = account.lastLogin,
-    status    = account.status,
+    status    = account.status.toString, // name of AccountStatus.Value
     createdDate = account.createdDate,
     updatedDate = account.updatedDate,
     firstName = account.firstName,

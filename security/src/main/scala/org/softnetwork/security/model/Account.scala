@@ -36,7 +36,7 @@ trait Account extends Principals {
 
 trait AccountInfo {
   def lastLogin: Option[Date]
-  def status: AccountStatus.Value
+  def status: String // FIXME bad serialization of Enumeration
   def createdDate: Date
   def updatedDate: Date
 }

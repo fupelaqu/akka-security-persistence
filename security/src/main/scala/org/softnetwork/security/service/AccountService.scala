@@ -11,12 +11,11 @@ import com.softwaremill.session.SessionOptions._
 import com.typesafe.scalalogging.StrictLogging
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
 import org.softnetwork.akka.actors.ActorSystemLocator
-import org.softnetwork.akka.http.Implicits._
 import org.softnetwork.akka.http.{DefaultComplete, Service}
 import org.softnetwork.security.config.Settings
 import org.softnetwork.security.handlers.AccountHandler
 import org.softnetwork.security.message._
-import org.softnetwork.security.model.Account
+import org.softnetwork.security.model._
 import org.softnetwork.session.Session
 import org.softnetwork.session.handlers.SessionRefreshTokenHandler
 
@@ -172,7 +171,9 @@ class AccountService(
     }
   }
 
-  private def accountEntity(account: Account) = HttpEntity(`application/json`, serialization.write(account.view))
+  private def accountEntity(account: Account) = {
+    HttpEntity(`application/json`, serialization.write(account.view)(formats))
+  }
 
   private def accountError(error: AccountErrorMessage) = {
     complete(HttpResponse(BadRequest, entity = HttpEntity(`application/json`, serialization.write(Map("message" -> error.message)))))

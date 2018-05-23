@@ -83,7 +83,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
                                             |    kafka {
                                             |      topic-config.replication = 0
                                             |      topic-config.partitions = 1
-                                            |      uri = s"$broker"
+                                            |      uri = "$broker"
                                             |      zookeeper = "$zookeeper"
                                             |    }
                                             |    """.stripMargin)
@@ -155,7 +155,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "work with username" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
       }
     }
     "fail if username already exists" in {
@@ -167,7 +167,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "work with email" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive.toString
       }
     }
     "fail if email already exists" in {
@@ -179,7 +179,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     "work with gsm" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
       }
     }
     "fail if gsm already exists" in {
@@ -195,7 +195,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
       Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(username, password)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Accepted
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
       }
     }
     "work with matching email and password" in {
@@ -203,12 +203,14 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
       Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(email, password)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Accepted
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
       }
     }
     "work with matching gsm and password" in {
       Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(gsm, password)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Accepted
+        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
       }
     }
     "fail with unknown username" in {
@@ -292,7 +294,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
       }
       Post(s"/api/${Settings.Path}/signOut").withHeaders(extractCookies(_headers):_*) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.OK
-//FIXME        responseAs[Profile].status shouldEqual AccountStatus.Deleted
+        responseAs[BaseAccountInfo].status shouldEqual AccountStatus.Deleted.toString
       }
     }
   }
