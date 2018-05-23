@@ -1,6 +1,7 @@
 package org.softnetwork.security.actors
 
 import akka.actor.Props
+import org.softnetwork.build.info.security.api.BuildInfo
 import org.softnetwork.notification.handlers.NotificationHandler
 import org.softnetwork.security.handlers.{MockGenerator, DefaultGenerator}
 import org.softnetwork.security.message.SignIn
@@ -13,7 +14,7 @@ class BaseAccountStateActor(
   override val notificationHandler: NotificationHandler
 ) extends AccountStateActor[BaseAccount] with DefaultGenerator {
 
-  override val persistenceId: String = "account-state"
+  override val persistenceId: String = s"account-state-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
 
   override var state: AccountState[BaseAccount] = AccountState[BaseAccount]()
 

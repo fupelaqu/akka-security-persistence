@@ -190,27 +190,28 @@ lazy val common = project.in(file("common"))
 
 lazy val notification = project.in(file("notification"))
   .configs(IntegrationTest)
-  .settings(Defaults.itSettings)
-  .enablePlugins(DockerComposePlugin)
+  .settings(Defaults.itSettings, BuildInfoSettings.settings)
+  .enablePlugins(DockerComposePlugin, BuildInfoPlugin)
   .dependsOn(common % "compile->compile;test->test;it->it")
 
 lazy val session = project.in(file("session"))
   .configs(IntegrationTest)
-  .settings(Defaults.itSettings)
+  .settings(Defaults.itSettings, BuildInfoSettings.settings)
+  .enablePlugins(BuildInfoPlugin)
   .dependsOn(
     common % "compile->compile;test->test;it->it"
   )
 
 lazy val security = project.in(file("security"))
   .configs(IntegrationTest)
-  .settings(Defaults.itSettings)
+  .settings(Defaults.itSettings, BuildInfoSettings.settings)
   .dependsOn(
     notification % "compile->compile;test->test,it->it"
   )
   .dependsOn(
     session % "compile->compile;test->test;it->it"
   )
-  .enablePlugins(DockerComposePlugin, sbtdocker.DockerPlugin, JavaAppPackaging)
+  .enablePlugins(DockerComposePlugin, sbtdocker.DockerPlugin, JavaAppPackaging, BuildInfoPlugin)
 
 lazy val root = project.in(file("."))
   .aggregate(

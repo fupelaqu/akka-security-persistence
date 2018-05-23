@@ -5,6 +5,7 @@ import java.util.{UUID, Date}
 import akka.actor.{Props, ActorLogging}
 import akka.persistence.{RecoveryCompleted, SnapshotOffer, PersistentActor}
 import org.softnetwork.akka.message.RecordEvent
+import org.softnetwork.build.info.notification.BuildInfo
 import org.softnetwork.notification.handlers._
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model._
@@ -189,36 +190,36 @@ case class NotificationState[T <: Notification](notifications: Map[String, T] = 
 
 object MailActor {
   def props(): Props = Props(new NotificationActor[Mail] with MailProvider{
-    override def persistenceId: String = "mail"
+    override def persistenceId: String = s"mail-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }
 
 object MockMailActor {
   def props(): Props = Props(new NotificationActor[Mail] with MockMailProvider{
-    override def persistenceId: String = "mock-mail"
+    override def persistenceId: String = s"mock-mail-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }
 
 object SMSActor {
   def props(): Props = Props(new NotificationActor[SMS] with SMSProvider{
-    override def persistenceId: String = "sms"
+    override def persistenceId: String = s"sms-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }
 
 object MockSMSActor {
   def props(): Props = Props(new NotificationActor[SMS] with MockSMSProvider{
-    override def persistenceId: String = "mock-sms"
+    override def persistenceId: String = s"mock-sms-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }
 
 object PushActor {
   def props(): Props = Props(new NotificationActor[Push] with PushProvider{
-    override def persistenceId: String = "push"
+    override def persistenceId: String = s"push-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }
 
 object MockPushActor {
   def props(): Props = Props(new NotificationActor[Push] with MockPushProvider{
-    override def persistenceId: String = "mock-push"
+    override def persistenceId: String = s"mock-push-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
   })
 }

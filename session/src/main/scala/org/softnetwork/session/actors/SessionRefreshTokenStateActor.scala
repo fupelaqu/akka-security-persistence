@@ -1,6 +1,7 @@
 package org.softnetwork.session.actors
 
 import akka.actor.Props
+import org.softnetwork.build.info.session.BuildInfo
 import org.softnetwork.session.Session
 
 /**
@@ -10,7 +11,7 @@ class SessionRefreshTokenStateActor extends RefreshTokenStateActor[Session]{
   /** number of events received before generating a snapshot - should be configurable **/
   override def snapshotInterval: Long = SessionRefreshTokenStateActor.snapshotInterval
 
-  override def persistenceId: String = "session-refresh-token-state"
+  override def persistenceId: String = s"session-refresh-token-state-${BuildInfo.gitCurrentBranch.replace("/", "_")}"
 }
 
 object SessionRefreshTokenStateActor{
