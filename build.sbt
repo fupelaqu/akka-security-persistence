@@ -23,6 +23,8 @@ addCommandAlias("pr", ";clean;publish") // clean and publish globally
 
 addCommandAlias("pld", ";clean;local:publishLocal;dockerComposeUp") // clean and publish/launch the docker environment
 
+addCommandAlias("dct", ";dockerComposeTest") // navigate the projects
+
 (shellPrompt in ThisBuild) := prompt
 
 organization := "org.softnetwork.security"
