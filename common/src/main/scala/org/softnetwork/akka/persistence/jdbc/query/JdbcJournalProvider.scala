@@ -34,7 +34,7 @@ trait JdbcJournalProvider extends JournalProvider { _: Db =>
   override protected def initJournalProvider(): Unit = {
     classicSystem.registerOnTermination(() => session.close())
     val metaData = session.metaData
-    val tables = metaData.getTables(null, "public", "event_processor_offsets", Array[String]("TABLE"))
+    val tables = metaData.getTables(null, offsetSchema, offsetTable, Array[String]("TABLE"))
     if(!tables.next()){
       Try{
         session.createStatement().executeUpdate(
