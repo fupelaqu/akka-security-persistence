@@ -6,7 +6,6 @@ import akka.actor.typed.Behavior
 import akka.persistence.jdbc.util.PersistenceTypedActorTestKit
 
 import org.scalatest.wordspec.AnyWordSpecLike
-import org.softnetwork.akka.message.Event
 
 import org.softnetwork.elastic.client.MockElasticApi
 
@@ -75,8 +74,4 @@ object SampleBehavior extends ElasticBehavior[Sample]
   override val persistenceId = "Sample"
 
   val manifestWrapper = ManifestW()
-
-  implicit def toE[T <: Event](event: T): Event = event
-  implicit def toR[T <: ElasticResult](result: T): ElasticResult = result
-
 }
