@@ -37,8 +37,8 @@ package object message {
   /**
     * allow a command to be performed for no specific entity
     */
-  trait AllEntities {_: EntityCommand =>
-    val id: String = ALL
+  trait AllEntities extends EntityCommand {_: Command =>
+    override val id: String = ALL
   }
 
   /** Event objects **/
