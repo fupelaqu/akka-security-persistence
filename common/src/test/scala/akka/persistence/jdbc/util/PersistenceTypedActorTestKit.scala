@@ -114,7 +114,7 @@ trait PersistenceTypedActorTestKit extends PostgresTestKit {
   def typedSystem() = system
 
   /**
-    * `PatienceConfig` from [[akka.actor.testkit.typed.TestKitSettings#DefaultTimeout]]
+    * `PatienceConfig` from [[_root_.akka.actor.testkit.typed.TestKitSettings#DefaultTimeout]]
     */
   implicit val patience: PatienceConfig =
     PatienceConfig(testKit.testKitSettings.DefaultTimeout.duration, Span(100, org.scalatest.time.Millis))
