@@ -1,0 +1,87 @@
+package org.softnetwork.elastic.persistence.query
+
+import akka.Done
+import akka.actor.typed.eventstream.EventStream.Publish
+
+import akka.persistence.typed.PersistenceId
+
+import org.softnetwork._
+
+import org.softnetwork.akka.persistence.query.{State2ExternalProcessorStream, JournalProvider}
+
+import org.softnetwork.elastic.message._
+
+import org.softnetwork.akka.model.Timestamped
+import org.softnetwork.akka.message._
+
+import scala.concurrent.Future
+
+/**
+  * Created by smanciot on 16/05/2020.
+  */
+trait State2ElasticProcessorStream[T <: Timestamped, E <: CrudEvent] extends State2ExternalProcessorStream[T, E]
+  with ManifestWrapper[T] {_: JournalProvider with ElasticProvider[T] =>
+
+  override val externalProcessor = "elastic"
+
+  def forTests: Boolean = false
+
+  override protected def init(): Unit = {
+    initIndex()
+  }
+
+  /**
+    *
+    * Processing event
+    *
+    * @param event         - event to process
+    * @param persistenceId - persistence id
+    * @param sequenceNr    - sequence number
+    * @return
+    */
+  override protected def processEvent(event: E, persistenceId: PersistenceId, sequenceNr: Long): Future[Done] = {
+    event match {
+
+      case evt: Created[_] =>
+        import evt._
+        if(!createDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
+          logger.error("document {} has not be created by {}", document.uuid, eventProcessorId)
+        }
+        else if(forTests){
+          system.eventStream.tell(Publish(DocumentCreated(document.uuid)))
+        }
+
+      case evt: Updated[_] =>
+        import evt._
+        if(!updateDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
+          logger.error("document {} has not be updated by {}", document.uuid, eventProcessorId)
+        }
+        else if(forTests){
+          system.eventStream.tell(Publish(DocumentUpdated(document.uuid)))
+        }
+
+      case evt: Deleted =>
+        import evt._
+        if(!deleteDocument(uuid)){
+          logger.error("document {} has not be deleted by {}", uuid, eventProcessorId)
+        }
+        else if(forTests){
+          system.eventStream.tell(Publish(DocumentDeleted(uuid)))
+        }
+
+      case evt: Upserted =>
+        if(!upsertDocument(evt.uuid, evt.data)){
+          logger.error("document {} has not been upserted by {}", evt.uuid, eventProcessorId)
+        }
+        else if(forTests){
+          system.eventStream.tell(Publish(DocumentUpserted(evt.uuid)))
+        }
+
+      case other => logger.warn("{} does not support event [{}]", eventProcessorId, other.getClass)
+
+    }
+
+    Future.successful(Done)
+  }
+}
+

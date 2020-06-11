@@ -9,6 +9,10 @@ import scala.concurrent.duration._
   */
 package mustache {
 
+  import java.io.{File => JFile}
+
+  import com.typesafe.config.{ConfigFactory, Config}
+
   case class MustacheParseException(line:Int, msg:String)
     extends Exception("Line "+line+": "+msg)
 
@@ -626,4 +630,32 @@ package mustache {
     def templateSource:String = source
   }
 
+  object Mustache{
+
+    lazy val config: Config = ConfigFactory.load()
+
+    val MustacheRootPath =
+      if (config.getIsNull("mustache.root.path"))
+        None
+      else
+        Some(config.getString("mustache.root.path"))
+
+    def apply(path: String): Mustache = {
+      new Mustache(
+          MustacheRootPath match {
+          case Some(mustacheRootPath) =>
+            val file = s"$mustacheRootPath/$path"
+            if(new JFile(file).exists){
+              Source.fromFile(file)
+            }
+            else{
+              Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(path))
+            }
+          case None                    =>
+            Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(path))
+        }
+      )
+    }
+
+  }
 }

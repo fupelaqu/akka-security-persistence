@@ -13,7 +13,7 @@ object Settings extends StrictLogging {
     case Right(r) => Some(r)
   }
 
-  case class NotificationConfig(mail: MailConfig, push: PushConfig)
+  case class NotificationConfig(mail: MailConfig, push: PushConfig, sms : SMSConfig)
 
   case class MailConfig(host: String,
                         port: Int,
@@ -28,7 +28,9 @@ object Settings extends StrictLogging {
 
   case class ApnsConfig(keystore: Keystore, dryRun: Boolean = false)
 
-  case class Keystore(name: String, password: String)
+  case class Keystore(path: String, password: String = "")
 
   case class GcmConfig(apiKey: String)
+
+  case class SMSConfig(mode: Option[SMSMode.Config] = None)
 }

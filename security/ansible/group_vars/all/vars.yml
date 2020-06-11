@@ -1,0 +1,15 @@
+---
+
+service_name: security-api
+service_config_templates: "{{playbook_dir}}/../security/ansible/templates/*.conf"
+#service_logs_template: "{{playbook_dir}}/../ansible/templates/service/logback.xml"
+service_exposed: yes
+
+notification_mail_host: "{{vault_notification_mail_host}}"
+notification_mail_port: "{{vault_notification_mail_port}}"
+notification_mail_username: "{{vault_notification_mail_username}}"
+notification_mail_password: "{{vault_notification_mail_password}}"
+
+security_mail_from: "{{vault_security_mail_from}}"
+security_activation_enabled: no
+security_maxLoginFailures: 10

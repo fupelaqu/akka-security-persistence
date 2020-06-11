@@ -1,96 +1,38 @@
 package org.softnetwork.security.service
 
-import akka.actor.ActorSystem
+import akka.actor.typed.Behavior
+import akka.actor.typed.scaladsl.Behaviors
+
 import akka.http.scaladsl.model.headers.{Cookie, RawHeader}
 import akka.http.scaladsl.model.{HttpHeader, StatusCodes}
-import akka.http.scaladsl.testkit.ScalatestRouteTest
-import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
-import de.heikoseeberger.akkahttpjson4s.Json4sSupport
-import org.scalatest.{Matchers, WordSpec}
-import org.softnetwork.akka.http.HealthCheckService
-import org.softnetwork.akka.http.Implicits._
-import org.softnetwork.kafka.api.KafkaSpec
-import org.softnetwork.notification.actors.MockNotificationSupervisor
-import org.softnetwork.notification.handlers.NotificationHandler
-import org.softnetwork.security.actors.MockBaseAccountStateActor
-import org.softnetwork.security.config.Settings
-import org.softnetwork.security.handlers.AccountHandler
-import org.softnetwork.security.message._
-import org.softnetwork.security.model.{BaseAccountInfo, AccountStatus}
-import org.softnetwork.session.actors.SessionRefreshTokenStateActor
-import org.softnetwork.session.handlers.SessionRefreshTokenHandler
 
-import scala.concurrent.duration._
+import akka.http.scaladsl.testkit.PersistenceTypedRouteTestKit
+
+import de.heikoseeberger.akkahttpjson4s.Json4sSupport
+
+import org.scalatest.wordspec.AnyWordSpecLike
+
+import org.softnetwork.akka.serialization._
+
+import org.softnetwork.security.config.Settings
+import org.softnetwork.security.handlers.{MockBasicAccountTypeKey, AccountKeyDao, MockGenerator}
+
+import org.softnetwork.security.message._
+import org.softnetwork.security.serialization._
+
+import org.softnetwork.security.model.{AccountView, AccountStatus}
+
+import org.softnetwork.security.persistence.typed.MockBasicAccountBehavior
+import org.softnetwork.session.persistence.typed.SessionRefreshTokenBehavior
 
 /**
   * Created by smanciot on 22/03/2018.
   */
-class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with KafkaSpec with Json4sSupport {
+class MainRoutesSpec extends AnyWordSpecLike with PersistenceTypedRouteTestKit with Json4sSupport {
 
-  var actorSystem: ActorSystem = _
+  implicit def formats = securityFormats
 
-  implicit val timeout         = Timeout(10.seconds)
-
-  val config = ConfigFactory.parseString(s"""
-                                            |    akka {
-                                            |      logger-startup-timeout = 10s
-                                            |      persistence {
-                                            |        journal {
-                                            |          plugin = "kafka-journal"
-                                            |        }
-                                            |        snapshot-store {
-                                            |          plugin = "kafka-snapshot-store"
-                                            |        }
-                                            |      }
-                                            |    }
-                                            |
-                                            |    # Don't terminate ActorSystem in tests
-                                            |    akka.coordinated-shutdown.run-by-jvm-shutdown-hook = off
-                                            |    akka.coordinated-shutdown.terminate-actor-system = off
-                                            |    akka.cluster.run-coordinated-shutdown-when-down = off
-                                            |
-                                            |    kafka-journal {
-                                            |      zookeeper {
-                                            |          connect = "$zookeeper"
-                                            |      }
-                                            |      consumer {
-                                            |        bootstrap.servers = "$broker"
-                                            |      }
-                                            |
-                                            |      producer {
-                                            |        bootstrap.servers = "$broker"
-                                            |      }
-                                            |
-                                            |      event {
-                                            |        producer {
-                                            |          bootstrap.servers = "$broker"
-                                            |          topic.mapper.class = "akka.persistence.kafka.EmptyEventTopicMapper"
-                                            |        }
-                                            |      }
-                                            |    }
-                                            |
-                                            |    kafka-snapshot-store {
-                                            |      prefix = "snapshot-"
-                                            |      consumer {
-                                            |        bootstrap.servers = "$broker"
-                                            |      }
-                                            |      producer {
-                                            |        bootstrap.servers = "$broker"
-                                            |      }
-                                            |    }
-                                            |
-                                            |    kafka {
-                                            |      topic-config.replication = 0
-                                            |      topic-config.partitions = 1
-                                            |      uri = "$broker"
-                                            |      zookeeper = "$zookeeper"
-                                            |    }
-                                            |    """.stripMargin)
-
-  var mainRoutes: MainRoutes = _
-
-  var accountHandler: AccountHandler = _
+  lazy val mainRoutes: MainRoutes = new MainRoutes()(typedSystem()) with MockBasicAccountTypeKey
 
   private val username = "smanciot"
 
@@ -100,41 +42,16 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
 
   private val email = "stephane.manciot@gmail.com"
 
-  private val gsm = "0660010203"
+  private val gsm = "33660010203"
 
-  private val password = "changeit"
+  private val password = "Changeit1"
 
-  override def beforeAll(): Unit = {
-    super.beforeAll()
-    actorSystem = ActorSystem.create("testMainRoutes", config)
-
-    val notificationHandler = new NotificationHandler(
-      actorSystem.actorOf(
-        MockNotificationSupervisor.props(),
-        "notifications"
-      )
-    )
-
-    accountHandler = new AccountHandler(
-      actorSystem.actorOf(
-        MockBaseAccountStateActor.props(notificationHandler),
-        "baseAccountStateActor"
-      )
-    )
-    mainRoutes = new MainRoutes(
-      new HealthCheckService(),
-      new AccountService(
-        accountHandler,
-        new SessionRefreshTokenHandler(
-          actorSystem.actorOf(SessionRefreshTokenStateActor.props(), "sessionRefreshTokenStateActor")
-        )
-      )(actorSystem.dispatcher)
-    )
-  }
-
-  protected override def afterAll(): Unit = {
-    super.afterAll()
-    actorSystem.terminate()
+  override def guardian(): Behavior[Nothing] = {
+    Behaviors.setup[Nothing] { context =>
+      MockBasicAccountBehavior.init(context.system)
+      SessionRefreshTokenBehavior.init(context.system)
+      Behaviors.empty
+    }
   }
 
   "MainRoutes" should {
@@ -145,45 +62,45 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     }
   }
 
-  "SignIn" should {
+  "SignUp" should {
     "fail if confirmed password does not match password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, "fake")) ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(username, password, Some("fake"))) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.BadRequest
         responseAs[AccountErrorMessage].message shouldBe PasswordsNotMatched.message
       }
     }
     "work with username" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(username, password, None, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
+        responseAs[AccountView].status shouldBe AccountStatus.Active
       }
     }
     "fail if username already exists" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(username, password))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.BadRequest
         responseAs[AccountErrorMessage].message shouldBe LoginAlreadyExists.message
       }
     }
     "work with email" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(email, password, None, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Inactive.toString
+        responseAs[AccountView].status shouldBe AccountStatus.Inactive
       }
     }
     "fail if email already exists" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(email, password))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.BadRequest
         responseAs[AccountErrorMessage].message shouldEqual LoginAlreadyExists.message
       }
     }
     "work with gsm" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(gsm, password, None, firstName, lastName))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.Created
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
+        responseAs[AccountView].status shouldBe AccountStatus.Active
       }
     }
     "fail if gsm already exists" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password))  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/signUp", SignUp(gsm, password))  ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.BadRequest
         responseAs[AccountErrorMessage].message shouldEqual LoginAlreadyExists.message
       }
@@ -192,78 +109,85 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
 
   "Login" should {
     "work with matching username and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(username, password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.Accepted
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
+        status shouldEqual StatusCodes.OK
+        responseAs[AccountView].status shouldBe AccountStatus.Active
       }
     }
     "work with matching email and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password, firstName, lastName)) ~> mainRoutes.routes
-      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
-      Post(s"/api/${Settings.Path}/login", Login(email, password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.Accepted
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
+      AccountKeyDao.lookupAccount(email)(typedSystem()) match {
+        case Some(uuid) =>
+          Get(s"/api/${Settings.Path}/activate", Activate(MockGenerator.computeToken(uuid))) ~> mainRoutes.routes
+          Post(s"/api/${Settings.Path}/login", Login(email, password)) ~> mainRoutes.routes ~> check {
+            status shouldEqual StatusCodes.OK
+            responseAs[AccountView].status shouldBe AccountStatus.Active
+          }
+        case _          => fail()
       }
     }
     "work with matching gsm and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(gsm, password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.Accepted
-        responseAs[BaseAccountInfo].status shouldBe AccountStatus.Active.toString
+        status shouldEqual StatusCodes.OK
+        responseAs[AccountView].status shouldBe AccountStatus.Active
       }
     }
     "fail with unknown username" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login("fake", password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "fail with unknown email" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login("fake@gmail.com", password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "fail with unknown gsm" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login("0102030405", password)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "fail with unmatching username and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(username, password, password)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(username, "fake")) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "fail with unmatching email and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
-      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(email, "fake")) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "fail with unmatching gsm and password" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(gsm, "fake")) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual LoginAndPasswordNotMatched.message
       }
     }
     "disable account after n login failures" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
       Post(s"/api/${Settings.Path}/login", Login(gsm, password)) ~> mainRoutes.routes  // reset number of failures
       val failures = (0 to Settings.MaxLoginFailures) // max number of failures + 1
           .map(_ => Post(s"/api/${Settings.Path}/login", Login(gsm, "fake")) ~> mainRoutes.routes )
       failures.last ~> check {
-        status shouldEqual StatusCodes.BadRequest
+        status shouldEqual StatusCodes.Unauthorized
         responseAs[AccountErrorMessage].message shouldEqual AccountDisabled.message
+      }
+    }
+  }
+
+  "ResetPassword" should {
+    "work" in {
+      var _headers: Seq[HttpHeader] = Seq.empty
+      Post(s"/api/${Settings.Path}/verificationCode", SendVerificationCode(gsm)) ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
+        _headers = headers
+      }
+      Post(s"/api/${Settings.Path}/resetPassword", ResetPassword(MockGenerator.code, password))
+        .withHeaders(extractCookies(_headers):_*)  ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
       }
     }
   }
@@ -271,10 +195,8 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
   "Logout" should {
     "work" in {
       var _headers: Seq[HttpHeader] = Seq.empty
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
-      accountHandler.handle(UpdatePassword(gsm, password, password, password)) // FIXME account may have been previously disabled
-      Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {  // reset number of failures
-        status shouldEqual StatusCodes.Accepted
+      Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
         _headers = headers
       }
       Post(s"/api/${Settings.Path}/logout").withHeaders(extractCookies(_headers):_*) ~> mainRoutes.routes ~> check {
@@ -283,43 +205,23 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
     }
   }
 
-  "SignOut" should {
+  "Unsubscribe" should {
     "work" in {
       var _headers: Seq[HttpHeader] = Seq.empty
-      Post(s"/api/${Settings.Path}/signIn", SignIn(gsm, password, password, firstName, lastName)) ~> mainRoutes.routes
-      accountHandler.handle(UpdatePassword(gsm, password, password, password)) // FIXME account may have been previously disabled
-      Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {  // reset number of failures
-        status shouldEqual StatusCodes.Accepted
+      Post(s"/api/${Settings.Path}/login", Login(gsm, password, refreshable = true)) ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
         _headers = headers
       }
-      Post(s"/api/${Settings.Path}/signOut").withHeaders(extractCookies(_headers):_*) ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/unsubscribe").withHeaders(extractCookies(_headers):_*) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.OK
-        responseAs[BaseAccountInfo].status shouldEqual AccountStatus.Deleted.toString
+        responseAs[AccountView].status shouldEqual AccountStatus.Deleted
       }
     }
   }
 
   "SendVerificationCode" should {
     "work" in {
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
-      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
-      Post(s"/api/${Settings.Path}/sendVerificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {
-        status shouldEqual StatusCodes.OK
-      }
-    }
-  }
-
-  "ResetPassword" should {
-    "work" in {
-      var _headers: Seq[HttpHeader] = Seq.empty
-      Post(s"/api/${Settings.Path}/signIn", SignIn(email, password, password)) ~> mainRoutes.routes
-      Get(s"/api/${Settings.Path}/activate", Activate("token")) ~> mainRoutes.routes
-      Post(s"/api/${Settings.Path}/sendVerificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {  // reset number of failures
-        status shouldEqual StatusCodes.OK
-        _headers = headers
-      }
-      Post(s"/api/${Settings.Path}/resetPassword", ResetPassword("code", password, password))
-        .withHeaders(extractCookies(_headers):_*)  ~> mainRoutes.routes ~> check {
+      Post(s"/api/${Settings.Path}/verificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.OK
       }
     }
@@ -328,7 +230,7 @@ class MainRoutesSpec extends WordSpec with Matchers with ScalatestRouteTest with
   def extractCookies(headers: Seq[HttpHeader]): Seq[HttpHeader] = {
     headers.filter((header) => {
       val name = header.lowercaseName()
-      println(s"$name:${header.value}")
+      log.info(s"$name:${header.value}")
       name == "set-cookie"
     }).flatMap((header) => {
       val cookie = header.value().split("=")

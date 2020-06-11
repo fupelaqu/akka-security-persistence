@@ -9,3 +9,5 @@ addSbtPlugin("se.marcuslonnberg" % "sbt-docker" % "1.4.1")
 addSbtPlugin("com.tapad" % "sbt-docker-compose" % "1.0.34")
 
 addSbtPlugin("com.eed3si9n" % "sbt-buildinfo" % "0.7.0")
+
+addSbtPlugin("net.virtual-void" % "sbt-dependency-graph" % "0.10.0-RC1")

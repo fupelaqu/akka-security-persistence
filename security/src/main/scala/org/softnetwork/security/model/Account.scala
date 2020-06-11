@@ -1,57 +1,62 @@
 package org.softnetwork.security.model
 
-import java.util.{Date, UUID}
+import java.util.Date
 
-/**
-  * Created by smanciot on 25/03/2018.
-  */
-trait Account extends Principals {
-  def uuid: String
+import org.softnetwork.akka.model.Timestamped
+
+import org.softnetwork.akka.serialization._
+
+import org.softnetwork._
+
+
+trait Account extends Principals with AccountDecorator with Timestamped {
   def credentials: String
   def lastLogin: Option[Date]
   def nbLoginFailures: Int
-  def status: AccountStatus.Value
+  def status: AccountStatus
 
-  def createdDate: Date
-  def updatedDate: Date
-
-  final override val primaryPrincipal = Principal(PrincipalType.Uuid, uuid)
   def email: Option[String] = get(PrincipalType.Email).map(_.value)
   def gsm: Option[String] = get(PrincipalType.Gsm).map(_.value)
   def username: Option[String] = get(PrincipalType.Username).map(_.value)
 
-  def activationToken: Option[VerificationToken]
+  def details: Option[AccountDetails]
+
+  def verificationToken: Option[VerificationToken]
   def verificationCode: Option[VerificationCode]
 
-  def copyWithCredentials(credentials: String): Account
-  def copyWithLastLogin(lastLogin: Option[Date]): Account
-  def copyWithNbLoginFailures(nbLoginFailures: Int): Account
-  def copyWithStatus(status: AccountStatus.Value): Account
-  def copyWithActivationToken(activationToken: Option[VerificationToken]): Account
-  def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account
-  def copyWithUpdatedDate(updatedDate: Date): Account
+  def registrations: Seq[DeviceRegistration]
 
-  def view: AccountInfo
+  def principal: Principal
+
+  def secondaryPrincipals: Seq[Principal]
+
+  def currentProfile: Option[Profile]
+
+  def profiles: Map[String, Profile]
+
+  def isAdmin: Boolean = profiles.values.exists(_.`type` == ProfileType.ADMINISTRATOR)
+
+  def isCustomer: Boolean = profiles.values.exists(_.`type` == ProfileType.CUSTOMER)
+
+  def isSeller: Boolean = profiles.values.exists(_.`type` == ProfileType.SELLER)
+
+  def newProfile(name: String): Profile
 }
 
-trait AccountInfo {
-  def lastLogin: Option[Date]
-  def status: String // FIXME bad serialization of Enumeration
-  def createdDate: Date
-  def updatedDate: Date
+trait AccountDetails extends Timestamped {
+  def firstName: String
+  def lastName: String
+  def phoneNumber: Option[String]
+  def email: Option[String]
 }
 
-object AccountStatus extends Enumeration {
-  type AccountStatus = Value
-  // user account should be disabled after a configurable number of successive login failures
-  val Disabled = Value(-1, "Disabled")
-  // user account has been deleted
-  val Deleted = Value(0, "Deleted")
-  // user account by default is inactive
-  val Inactive = Value(1, "Inactive")
-  // user account must be active in oprder to access platform
-  val Active = Value(2, "Active")
-}
+@SerialVersionUID(0L)
+class AccountView(val lastLogin: Option[Date],
+                  val status: AccountStatus,
+                  val createdDate: Date,
+                  val lastUpdated: Date,
+                  val currentProfile: Option[Profile],
+                  val details: Option[AccountDetails])
 
 /**
   * A collection of all principals associated with a corresponding Subject.
@@ -60,17 +65,14 @@ object AccountStatus extends Enumeration {
   * for a Subject
   *
   */
-trait Principals{
+trait Principals extends Profiles {self: Account =>
 
-  /**
-    * variable to store all secondary principals
-    */
-  private[this] var _secondaryPrincipals: Seq[Principal] = Nil
+  def withSecondaryPrincipals(secondaryPrincipals: Seq[Principal]): Account
 
   /**
     * primary principal
     */
-  val primaryPrincipal = Principal(PrincipalType.Uuid, UUID.randomUUID.toString)
+  val primaryPrincipal = Principal(PrincipalType.Uuid, uuid)
 
   /**
     *
@@ -80,28 +82,25 @@ trait Principals{
 
   /**
     *
-    * @return all secondary principals within this collection of principals
-    */
-  def secondaryPrincipals: Seq[Principal] = Seq() ++ _secondaryPrincipals
-
-  /**
-    *
     * @param principal - the principal to add to this collection of principals
     * @return the collection of principals
     */
-  def add(principal: Principal) = {
+  def add(principal: Principal): Account = {
     if(principal.`type` != PrincipalType.Uuid){
-      _secondaryPrincipals = _secondaryPrincipals.filterNot(_.`type` == principal.`type`)  :+ principal
+      withSecondaryPrincipals(secondaryPrincipals.filterNot(_.`type` == principal.`type`)  :+ principal)
     }
-    this
+    else{
+      self
+    }
   }
 
-  def addAll(principals: Seq[Principal]): Principals = {
+  def addAllPrincipals(principals: Seq[Principal]): Account = {
     principals match {
       case Nil        => this
       case head::tail =>
         add(head)
-        addAll(tail)
+        addAllPrincipals(tail)
+      case _ => this //FIXME
     }
   }
 
@@ -110,12 +109,10 @@ trait Principals{
     * @param `type` - type of Principal to look for within this collection of principals
     * @return Some[Principal] if a principal of this type has been found, None otherwise
     */
-  def get(`type`: PrincipalType.Value): Option[Principal] = principals.find(_.`type` == `type`)
+  def get(`type`: PrincipalType): Option[Principal] = principals.find(_.`type` == `type`)
 }
 
-case class Principal(`type`: PrincipalType.Value, value: String)
-
-object Principal{
+trait PrincipalCompanion{
   def apply(principal: String): Principal = {
     if(EmailValidator.check(principal)){
       Principal(PrincipalType.Email, principal)
@@ -129,11 +126,206 @@ object Principal{
   }
 }
 
-object PrincipalType extends Enumeration {
-  type PrincipalType = Value
-  val Other = Value(-1, "Other")
-  val Uuid = Value(0, "Uuid")
-  val Email = Value(1, "Email")
-  val Gsm = Value(2, "Gsm")
-  val Username = Value(3, "Username")
+trait Profiles {self: Account =>
+
+  def withCurrentProfile(currentProfile: Profile): Account
+
+  def withProfiles(profiles: Map[String, Profile]): Account
+
+  /**
+    * add a profile
+    *
+    * @param profile - the profile to add
+    */
+  def add(profile: Profile): Account = {
+    val completedProfile = completeProfile(profile)
+    (currentProfile match {
+      case None => withCurrentProfile(completedProfile)
+      case _    => self
+    }).copyWithDetails(Some(completedProfile)).withProfiles(profiles.+(profile.name -> completedProfile))
+  }
+
+  def completeProfile(profile: Profile): Profile = {
+    self.details match {
+      case Some(details) =>
+        import details.{email => _, _}
+        profile.withUuid(
+          self.uuid
+        ).withCreatedDate(
+          now()
+        ).withLastUpdated(
+          now()
+        ).withFirstName(
+          profile.firstName.getOrElse(firstName.getOrElse(""))
+        ).withLastName(
+          profile.lastName.getOrElse(lastName.getOrElse(""))
+        ).withPhoneNumber(
+          profile.phoneNumber.getOrElse(phoneNumber.getOrElse(gsm.orNull))
+        ).withEmail(
+          profile.email.getOrElse(details.email.getOrElse(self.email.orNull))
+        )
+      case _ =>
+        profile.withEmail(
+          profile.email.getOrElse(self.email.orNull)
+        ).withPhoneNumber(
+          profile.phoneNumber.getOrElse(self.gsm.orNull)
+        )
+    }
+  }
+
+  /**
+    * add all profiles
+    *
+    * @param profiles - the profiles to add
+    * @return
+    */
+  def addAllProfiles(profiles: Seq[Profile]): Account = {
+    profiles match {
+      case Nil        => self
+      case head::tail => add(head).addAllProfiles(tail)
+    }
+  }
+
+  /**
+    * set current profile
+    *
+    * @param name - profile unique name
+    */
+  def setCurrentProfile(name: String): Account = {
+    profile(Some(name)) match {
+      case Some(p) => copyWithDetails(Some(p)).withCurrentProfile(p)
+      case _ => add(newProfile(name)).setCurrentProfile(name)
+    }
+  }
+
+  def profile(name: Option[String]): Option[Profile] =
+    (name match {
+      case Some(key) => profiles.get(key) match {
+        case s: Some[Profile] => s
+        case _                => add(newProfile(key)).profile(name)
+      }
+      case _         => currentProfile
+    }).map(profile => profile.copyWithAccount(self))
+
+}
+
+trait Profile extends AccountDetails with ProfileDecorator {
+  /**
+    * profile name (should be unique) among all account profiles
+    *
+    * @return
+    */
+  def name: String
+  def `type`: ProfileType
+  def description: Option[String]
+}
+
+@SerialVersionUID(0L)
+class ProfileView(
+                   val uuid: String,
+                   val createdDate: Date,
+                   val lastUpdated: Date,
+                   val firstName: String,
+                   val lastName: String,
+                   val phoneNumber: Option[String],
+                   val email: Option[String],
+                   val name: String,
+                   val `type`: ProfileType,
+                   val description: Option[String]) extends AccountDetails {
+}
+
+trait AccountDecorator {account: Account =>
+  def withCredentials(credentials: String): Account
+  def withLastLogin(lastLogin: Date): Account
+  def withNbLoginFailures(nbLoginFailures: Int): Account
+  def withStatus(status: AccountStatus): Account
+  def withVerificationToken(verificationToken: VerificationToken): Account
+  def withVerificationCode(verificationCode: VerificationCode): Account
+  def withLastUpdated(lastUpdated: Date): Account
+  def withDetails(details: AccountDetails): Account
+  def withRegistrations(registrations: Seq[DeviceRegistration]): Account
+
+  def copyWithCredentials(credentials: String): Account = withCredentials(credentials)
+  def copyWithLastLogin(lastLogin: Option[Date]): Account = withLastLogin(lastLogin.orNull)
+  def copyWithNbLoginFailures(nbLoginFailures: Int): Account = withNbLoginFailures(nbLoginFailures)
+  def copyWithStatus(status: AccountStatus): Account = withStatus(status)
+  def copyWithVerificationToken(verificationToken: Option[VerificationToken]): Account =
+    withVerificationToken(verificationToken.orNull)
+  def copyWithVerificationCode(verificationCode: Option[VerificationCode]): Account =
+    withVerificationCode(verificationCode.orNull)
+  def copyWithLastUpdated(): Account = withLastUpdated(now())
+  def copyWithDetails(details: Option[AccountDetails]): Account = {
+    details match {
+      case Some(s) if s.phoneNumber.isDefined =>
+        if(GsmValidator.check(s.phoneNumber.get)){
+          add(Principal(s.phoneNumber.get))
+        }
+      case Some(s) if s.email.isDefined =>
+        if(EmailValidator.check(s.email.get)){
+          add(Principal(s.email.get))
+        }
+      case _ => addAllPrincipals(
+        secondaryPrincipals.filterNot(p =>
+          p.`type` == PrincipalType.Gsm || p.`type` == PrincipalType.Email
+        )
+      )
+    }
+    withDetails(details.orNull)
+  }
+  def copyWithRegistrations(registrations: Seq[DeviceRegistration]): Account = withRegistrations(registrations)
+
+  val view: AccountView =
+    new AccountView(
+      account.lastLogin,
+      account.status,
+      account.createdDate,
+      account.lastUpdated,
+      account.currentProfile,
+      account.details
+    )
+}
+
+trait ProfileDecorator { profile: Profile =>
+  def withUuid(uuid: String): Profile
+  def withCreatedDate(createdDate: Date): Profile
+  def withLastUpdated(lastUpdated: Date): Profile
+  def withName(name: String): Profile
+  def withType(`type`: ProfileType): Profile
+  def withFirstName(firstName: String): Profile
+  def withLastName(lastName: String): Profile
+  def withPhoneNumber(phoneNumber: String): Profile
+  def withEmail(email: String): Profile
+  def withDescription(description: String): Profile
+
+  def copyWithAccount(account: Account): Profile = {
+    copyWithDetails(account.details)
+  }
+
+  def copyWithDetails(details: Option[AccountDetails]): Profile = {
+    details match {
+      case Some(s) =>
+        withFirstName(s.firstName.getOrElse(firstName.getOrElse("")))
+          .withLastName(s.lastName.getOrElse(lastName.getOrElse("")))
+          .withPhoneNumber(s.phoneNumber.getOrElse(phoneNumber.orNull))
+          .withEmail(s.email.getOrElse(email.orNull))
+          .withCreatedDate(s.createdDate)
+          .withLastUpdated(s.lastUpdated)
+          .withUuid(s.uuid)
+      case _ => this
+    }
+  }
+
+  val view: ProfileView =
+    new ProfileView(
+      uuid = profile.uuid,
+      createdDate = profile.createdDate,
+      lastUpdated = profile.lastUpdated,
+      name = profile.name,
+      firstName = profile.firstName,
+      lastName = profile.lastName,
+      phoneNumber = profile.phoneNumber,
+      email = profile.email,
+      `type` = profile.`type`,
+      description = profile.description
+    )
 }

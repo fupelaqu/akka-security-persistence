@@ -16,7 +16,13 @@ object Settings extends StrictLogging {
 
   val BaseUrl = config.getString("security.baseUrl")
 
-  val MailFrom = config.getString("security.mail.from")
+  val ResetPasswordUrl = config.getString("security.resetPasswordUrl")
+
+  val MailFrom = config.getString("notification.mail.from")
+
+  val MailName = config.getString("notification.mail.name")
+
+  val ActivationEnabled = config.getBoolean("security.activation.enabled")
 
   val ActivationTokenExpirationTime = config.getInt("security.activation.token.expirationTime")
 
@@ -24,9 +30,13 @@ object Settings extends StrictLogging {
 
   val VerificationCodeExpirationTime = config.getInt("security.verification.code.expirationTime")
 
-  val PushClientId = config.getString("security.push.clientId")
+  val VerificationTokenExpirationTime = config.getInt("security.verification.token.expirationTime")
 
-  val SMSClientId = config.getString("security.sms.clientId")
+  val PushClientId = config.getString("notification.push.clientId")
+
+  val SMSClientId = config.getString("notification.sms.clientId")
+
+  val SMSName = config.getString("notification.sms.name")
 
   val MaxLoginFailures = config.getInt("security.maxLoginFailures")
 
@@ -35,6 +45,22 @@ object Settings extends StrictLogging {
       logger.error(s"Something went wrong with the provided arguments $configError")
       PasswordRules()
     case Right(rules) => rules
+  }
+
+  lazy val NotificationsConfig: Notifications.Config = Configs[Notifications.Config].get(config, "security.notifications").toEither match{
+    case Left(configError)  =>
+      logger.error(s"Something went wrong with the provided arguments $configError")
+      throw configError.configException
+    case Right(notificationsConfig) => notificationsConfig
+  }
+
+  lazy val AdministratorsConfig: Administrators.Config = Configs[Administrators.Config].get(
+    config, "security.admin"
+  ).toEither match {
+    case Left(configError)  =>
+      logger.error(s"Something went wrong with the provided arguments $configError")
+      throw configError.configException
+    case Right(administratorsConfig) => administratorsConfig
   }
 
 }

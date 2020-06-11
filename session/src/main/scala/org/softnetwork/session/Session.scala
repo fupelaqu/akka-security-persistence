@@ -4,11 +4,11 @@ import java.util.UUID
 
 import com.softwaremill.session.{SessionConfig, SessionManager, SessionSerializer}
 import org.softnetwork.session.config.Settings.Session._
-import org.softnetwork.session.config.Settings.{Session => S}
 
 import scala.collection.mutable
 import scala.util.Try
 
+@SerialVersionUID(0L)
 case class Session(data: Session.Data = mutable.Map((CookieName, UUID.randomUUID.toString)), refreshable: Boolean = false) {
 
   private var dirty: Boolean = false
@@ -42,10 +42,14 @@ case class Session(data: Session.Data = mutable.Map((CookieName, UUID.randomUUID
   def apply(key: String): Any = data(key)
 
   val id = data(CookieName).asInstanceOf[String]
+
+  val admin: Boolean = Try(data(Session.adminKey).toString.toBoolean).getOrElse(false)
 }
 
 object Session {
   type Data = mutable.Map[String, Any]
+
+  val adminKey = "admin"
 
   val sessionConfig = {
     SessionConfig.default(CookieSecret)

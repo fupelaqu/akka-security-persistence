@@ -12,12 +12,7 @@ class MustacheSpec extends WordSpec with Matchers {
 
   "Mustache" must {
     "render template propertly" in {
-      val template = new Mustache(
-        Source.fromFile(
-          Thread.currentThread().getContextClassLoader.getResource("template/hello.mustache").getPath
-        )
-      )
-      template.render(Map("name"->"world")) shouldBe "Hello world !"
+      Mustache("template/hello.mustache").render(Map("name"->"world")) shouldBe "Hello world !"
     }
   }
 }

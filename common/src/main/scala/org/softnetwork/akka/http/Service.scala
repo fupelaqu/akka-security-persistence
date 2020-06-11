@@ -1,26 +1,28 @@
 package org.softnetwork.akka.http
 
+import akka.actor.typed.ActorSystem
+import org.softnetwork.akka.handlers.Handler
 import org.softnetwork.akka.message.{Command, CommandResult}
 
-import scala.concurrent.Future
-import scala.concurrent.duration._
+import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 
 /**
-  * Created by smanciot on 20/03/2018.
+  * Created by smanciot on 15/04/2020.
   */
-trait Service[U <: Command, V <: CommandResult] {
+trait Service[C <: Command, R <: CommandResult] { _: Handler[C, R] =>
 
-  def handler: Handler[U, V]
+  implicit def system: ActorSystem[_]
 
-  val defaultAtMost = 10.second
+  implicit lazy val ec: ExecutionContext = system.executionContext
 
-  def run(command: U, atMost: Duration = defaultAtMost)(implicit c: ClassTag[V]): V = {
-    handler.handle(command, atMost)
+  def run(command: C)(implicit atMost: FiniteDuration, tTag: ClassTag[C]): R = {
+    this ? (command, atMost)
   }
 
-  def runAsync(command: U)(implicit c: ClassTag[V]): Future[V] = {
-    handler.handleAsync(command)
+  def runAsync(command: C)(implicit atMost: FiniteDuration, tTag: ClassTag[C]): Future[R] = {
+    Future.successful(this ? (command, atMost))
   }
 
 }

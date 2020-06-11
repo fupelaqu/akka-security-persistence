@@ -9,6 +9,7 @@ import java.util.Date
 import com.typesafe.scalalogging.StrictLogging
 import org.softnetwork.notification.config.Settings
 import org.softnetwork.notification.config.Settings.MailConfig
+import org.softnetwork.notification.model.MailType._
 import org.softnetwork.notification.model._
 
 import scala.util.{Failure, Success, Try}
@@ -29,14 +30,14 @@ trait MailProvider extends NotificationProvider[Mail] with StrictLogging {
       else Plain
 
     val commonsMail: Email = format match {
-      case Plain     => new SimpleEmail().setMsg(notification.message)
-      case Rich      => new HtmlEmail().setHtmlMsg(notification.richMessage.get).setTextMsg(notification.message)
+      case Rich => new HtmlEmail().setHtmlMsg(notification.richMessage.get).setTextMsg(notification.message)
       case MultiPart =>
         val emailAttachment = new EmailAttachment()
-        emailAttachment.setPath(notification.attachment.get.file.getAbsolutePath)
+        emailAttachment.setPath(notification.attachment.get.path)
         emailAttachment.setDisposition(EmailAttachment.ATTACHMENT)
         emailAttachment.setName(notification.attachment.get.name)
         new MultiPartEmail().attach(emailAttachment).setMsg(notification.message)
+      case _ => new SimpleEmail().setMsg(notification.message)
     }
 
     // Set authentication
@@ -56,8 +57,8 @@ trait MailProvider extends NotificationProvider[Mail] with StrictLogging {
     notification.bcc.foreach(commonsMail.addBcc)
 
     Try(commonsMail
-      .setFrom(notification.from._1, notification.from._2.getOrElse(""))
-      .setSubject(notification.subject)
+      .setFrom(notification.from.value, notification.from.alias.getOrElse(""))
+      .setSubject(notification.subject) // MimeUtility.encodeText(subject, "utf-8", "B")
       .send()) match {
       case Success(s) =>
         logger.info(s)
@@ -83,3 +84,7 @@ trait MailProvider extends NotificationProvider[Mail] with StrictLogging {
 }
 
 trait MockMailProvider extends MailProvider with MockNotificationProvider[Mail]
+
+object MailProvider extends MailProvider
+
+object MockMailProvider extends MockMailProvider

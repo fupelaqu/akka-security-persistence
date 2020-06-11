@@ -3,6 +3,9 @@ package org.softnetwork.akka.http
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.{Directives, Route}
 import de.heikoseeberger.akkahttpjson4s.Json4sSupport
+import org.json4s.Formats
+
+import org.softnetwork.akka.serialization._
 
 import scala.util.{Failure, Success, Try}
 
@@ -10,8 +13,10 @@ import scala.util.{Failure, Success, Try}
   * @author Valentin Kasas
   */
 trait DefaultComplete { this: Directives ⇒
+
+  implicit def formats: Formats
+
   def handleCall[T](call: ⇒ T, handler: T ⇒ Route): Route = {
-    import Implicits._
     import Json4sSupport._
     val start = System.currentTimeMillis()
     val res = Try(call) match {
@@ -28,7 +33,6 @@ trait DefaultComplete { this: Directives ⇒
   }
 
   def handleComplete[T](call: Try[Try[T]], handler: T ⇒ Route): Route = {
-    import Implicits._
     import Json4sSupport._
     val start = System.currentTimeMillis()
     val ret = call match {

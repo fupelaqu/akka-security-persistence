@@ -1,6 +1,7 @@
 package org.softnetwork.notification.handlers
 
-import java.util.Date
+import java.io.{File => JFile}
+import java.util.{Date, ArrayList => JArrayList}
 
 import javapns.devices.implementations.basic.BasicDevice
 import javapns.{Push => ApnsPush}
@@ -49,15 +50,18 @@ trait PushProvider extends NotificationProvider[Push] {
     if(nbDevices > 0){
       val results = ApnsPush.payload(
         payload,
-        keystore.name,
+        _keystore(keystore.path),
         keystore.password,
         dryRun,
-        (
-          if(nbDevices > maxDevices)
-            devices.take(maxDevices)
-          else
-            devices
-          ).map(deviceToApnsBasicDevice)
+        new JArrayList[BasicDevice](
+          asJavaCollection((
+            if(nbDevices > maxDevices)
+              devices.take(maxDevices)
+            else
+              devices
+            ).map(deviceToApnsBasicDevice)
+          )
+        )
       ).map(pushedNotificationToNotificationStatusResult)
       if(nbDevices > maxDevices){
         apns(payload, devices.drop(maxDevices), status ++ results)
@@ -85,12 +89,15 @@ trait PushProvider extends NotificationProvider[Push] {
       )
         .sendNoRetry(
           payload,
-          (
-            if(nbDevices > maxDevices)
-              devices.take(maxDevices)
-            else
-              devices
-            ).map(_.regId)
+          new JArrayList[String](
+            asJavaCollection((
+              if(nbDevices > maxDevices)
+                devices.take(maxDevices)
+              else
+                devices
+              ).map(_.regId)
+            )
+          )
         ).getResults.map(resultToNotificationStatusResult)
       if(nbDevices > maxDevices){
         gcm(payload, devices.drop(maxDevices), status ++ results)
@@ -155,15 +162,36 @@ object APNSPushProvider {
   implicit def deviceToApnsBasicDevice(device: Device): BasicDevice = new BasicDevice(device.regId, true)
 
   implicit def pushedNotificationToNotificationStatusResult(result: PushedNotification): NotificationStatusResult = {
+    val ex = Option(result.getException)
+    val error =
+      if(ex.isDefined){
+        Some(s"${result.getDevice.getToken} -> ${ex.get.getMessage}")
+      }
+      else{
+        None
+      }
     NotificationStatusResult(
       result.getDevice.getToken,
-      if(result.isTransmissionCompleted)
+      if (result.isSuccessful)
         NotificationStatus.Sent
       else
         NotificationStatus.Rejected,
-      None
+      error
     )
+  }
+
+  def _keystore(path: String): Object = {
+    if(new JFile(path).exists){
+      path
+    }
+    else{
+      getClass.getClassLoader.getResourceAsStream(path)
+    }
   }
 }
 
 trait MockPushProvider extends PushProvider with MockNotificationProvider[Push]
+
+object PushProvider extends PushProvider
+
+object MockPushProvider extends MockPushProvider

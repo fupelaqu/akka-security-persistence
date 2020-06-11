@@ -7,30 +7,36 @@ import org.softnetwork.security.model.{ExpirationDate, VerificationCode, Verific
   */
 trait Generator {
   val oneDay = 24*60
-  def generateToken(login: String, expiryTimeInMinutes:Int = oneDay): VerificationToken
+  def generateToken(uuid: String, expiryTimeInMinutes: Int = oneDay): VerificationToken
   def generatePinCode(pinSize: Int, expiryTimeInMinutes:Int = 5): VerificationCode
 }
 
 trait DefaultGenerator extends Generator {
 
-  override def generateToken(login: String, expiryTimeInMinutes:Int): VerificationToken =
-    VerificationToken(login, expiryTimeInMinutes)
+  override def generateToken(uuid: String, expiryTimeInMinutes: Int): VerificationToken =
+    VerificationToken(uuid, expiryTimeInMinutes)
 
   override def generatePinCode(pinSize: Int, expiryTimeInMinutes: Int): VerificationCode =
     VerificationCode(pinSize, expiryTimeInMinutes)
 }
 
 trait MockGenerator extends Generator with ExpirationDate {
-  val token = "token"
 
-  val code  = "code"
+  import MockGenerator._
 
-  override def generateToken(login: String, expiryTimeInMinutes:Int): VerificationToken = {
-    VerificationToken(token, compute(expiryTimeInMinutes).getTime)
+  override def generateToken(uuid: String, expiryTimeInMinutes: Int): VerificationToken = {
+    VerificationToken(computeToken(uuid), compute(expiryTimeInMinutes))
   }
 
   override def generatePinCode(pinSize: Int, expiryTimeInMinutes: Int): VerificationCode = {
-    VerificationCode(code, compute(expiryTimeInMinutes).getTime)
+    VerificationCode(code, compute(expiryTimeInMinutes))
   }
 
+}
+
+object MockGenerator{
+  val token = "token"
+  val code  = "code"
+
+  def computeToken(uuid: String) = s"$uuid-$token"
 }

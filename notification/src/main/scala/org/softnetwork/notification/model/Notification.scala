@@ -2,38 +2,61 @@ package org.softnetwork.notification.model
 
 import java.util.Date
 
+import org.softnetwork.akka.model.State
+
+import scala.language.reflectiveCalls
+
 /**
   * Created by smanciot on 14/04/2018.
   */
-trait Notification {
-  def from: (String, Option[String])
+trait Notification extends State with NotificationDecorator {
+  def uuid: String
+  def createdDate: Date
+  def lastUpdated: Date
+  def from: From
   def to: Seq[String]
   def subject: String
   def message: String
-  def `type`: NotificationType.Value
+  def `type`: NotificationType
   def maxTries: Int
-  def nbTries: Int = 0
-  def deferred: Option[Date] = None
+  def nbTries: Int
+  def deferred: Option[Date]
 
-  def ackUuid: Option[String] = None
-  def status: NotificationStatus.Value = NotificationStatus.Pending
-  def lastUpdated: Option[Date] = None
+  def ackUuid: Option[String]
+  def status: NotificationStatus
 
-  def results: Seq[NotificationStatusResult] = Seq.empty
+  def results: Seq[NotificationStatusResult]
 
-  def incNbTries(): Notification
-  def copyWithAck(ack: NotificationAck): Notification
 }
 
-case class NotificationStatusResult(recipient: String, status: NotificationStatus.Value, error: Option[String] = None)
+trait NotificationDecorator {_: Notification =>
 
-case class NotificationAck(
-  uuid: Option[String],
-  results: Seq[NotificationStatusResult] = Seq.empty,
-  date: Date = new Date()
-){
-  lazy val status: NotificationStatus.Value = {
-    val distinct = results.map(_.status).distinct
+  def withNbTries(nbTries: Int): Notification with NotificationDecorator
+
+  def withAckUuid(ackUuid: String): Notification with NotificationDecorator
+
+  def withStatus(status: NotificationStatus): Notification with NotificationDecorator
+
+  def withResults(results: Seq[NotificationStatusResult]): Notification with NotificationDecorator
+
+  def withLastUpdated(lastUpdated: Date): Notification with NotificationDecorator
+
+  def incNbTries(): Notification with NotificationDecorator = withNbTries(nbTries + 1)
+
+  def copyWithAck(ack: NotificationAck): Notification =
+    withAckUuid(ack.uuid.orNull)
+      .withResults(ack.results)
+      .withStatus(NotificationAckDecorator.status(ack))
+      .withLastUpdated(ack.date)
+}
+
+trait NotificationAckDecorator{_: NotificationAck =>
+  def status: NotificationStatus = NotificationAckDecorator.status(this)
+}
+
+object NotificationAckDecorator{
+  def status(ack: NotificationAck): NotificationStatus =  {
+    val distinct = ack.results.map(_.status).distinct
     if(distinct.contains(NotificationStatus.Rejected)) {
       NotificationStatus.Rejected
     }
@@ -50,20 +73,4 @@ case class NotificationAck(
       NotificationStatus.Delivered
     }
   }
-}
-
-object NotificationType extends Enumeration {
-  type NotificationType = Value
-  val Mail = Value(0, "Mail")
-  val SMS = Value(1, "SMS")
-  val Push = Value(2, "Push")
-}
-
-object NotificationStatus extends Enumeration {
-  type NotificationStatus = Value
-  val Pending = Value(0, "Pending")
-  val Sent = Value(1, "Sent")
-  val Delivered = Value(2, "Delivered")
-  val Undelivered = Value(-1, "Undelivered")
-  val Rejected = Value(-2, "Rejected")
 }

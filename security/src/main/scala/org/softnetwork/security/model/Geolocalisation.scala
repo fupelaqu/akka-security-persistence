@@ -42,5 +42,3 @@ object Geolocalisation {
     distance(from, to) <= maxDistance
   }
 }
-
-case class Poi(latitude: Double, longitude: Double, endAltitude: Double = 0)
