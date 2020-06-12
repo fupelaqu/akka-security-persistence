@@ -23,7 +23,7 @@ import scala.util.{Failure, Success, Try}
 trait Handler[C <: Command, R <: CommandResult] extends StrictLogging {
   type Request = ActorRef[R] => C
 
-  protected def command2Request(command: C) : Request
+  implicit def command2Request(command: C) : Request
 
   protected val defaultAtMost = 10.second
 
@@ -40,10 +40,9 @@ trait Handler[C <: Command, R <: CommandResult] extends StrictLogging {
     ref.get
   }
 
-  def ?(command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): R = {
+  def ?(command: C, atMost: FiniteDuration = defaultAtMost)(implicit system: ActorSystem[_]): R = {
     implicit val timeout: Timeout = atMost
-    Try(Await.result(actorRef ? request, atMost)) match {
+    Try(Await.result(actorRef ? command, atMost)) match {
       case Success(r) => r
       case Failure(f) =>
         logger.error(f.getMessage, f)
@@ -51,8 +50,7 @@ trait Handler[C <: Command, R <: CommandResult] extends StrictLogging {
     }
   }
 
-  def !(command: C)(
-    implicit system: ActorSystem[_], tTag: ClassTag[C]): Unit = {
+  def !(command: C)(implicit system: ActorSystem[_]): Unit = {
     actorRef ! command
   }
 
@@ -64,7 +62,7 @@ trait EntityHandler[C <: Command, R <: CommandResult] extends StrictLogging {_: 
 
   type Request = ActorRef[R] => C
 
-  protected def command2Request(command: C) : Request
+  implicit def command2Request(command: C) : Request
 
   protected val defaultAtMost = 10.second
 
@@ -72,9 +70,9 @@ trait EntityHandler[C <: Command, R <: CommandResult] extends StrictLogging {_: 
     ClusterSharding(system).entityRefFor(TypeKey, entityId)
 
   private[this] def ask(entityId: String, command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): R = {
+    implicit system: ActorSystem[_], tTag: ClassTag[C]): R = {
     implicit val timeout: Timeout = atMost
-    Try(Await.result(entityRef(entityId) ? request, atMost)) match {
+    Try(Await.result(entityRef(entityId) ? command, atMost)) match {
       case Success(r) => r
       case Failure(f) =>
         logger.error(f.getMessage, f)
@@ -87,7 +85,7 @@ trait EntityHandler[C <: Command, R <: CommandResult] extends StrictLogging {_: 
   }
 
   def ?(entityId: String, command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): R =
+    implicit system: ActorSystem[_], tTag: ClassTag[C]): R =
     this.ask(entityId, command, atMost)
 
   def !(entityId: String, command: C)(implicit system: ActorSystem[_], tTag: ClassTag[C]): Unit =
@@ -101,15 +99,14 @@ trait EntityHandler[C <: Command, R <: CommandResult] extends StrictLogging {_: 
   protected def lookup[T](key: T)(implicit system: ActorSystem[_]): Option[String] = Some(key)
 
   def ??[T](key: T, command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): R = {
+    implicit system: ActorSystem[_], tTag: ClassTag[C]): R = {
     lookup(key) match {
       case Some(entityId) => this ? (entityId, command, atMost)
       case _              => this ? (key, command, atMost)
     }
   }
 
-  def ?![T](key: T, command: C)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): Unit = {
+  def ?![T](key: T, command: C)(implicit system: ActorSystem[_], tTag: ClassTag[C]): Unit = {
     lookup(key) match {
       case Some(entityId) => this ! (entityId, command)
       case _              => this ! (key, command)
@@ -117,23 +114,21 @@ trait EntityHandler[C <: Command, R <: CommandResult] extends StrictLogging {_: 
   }
 
   def *?[T](keys: List[T], command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): List[R] = {
+    implicit system: ActorSystem[_], tTag: ClassTag[C]): List[R] = {
     for(key <- keys) yield lookup(key) match {
       case Some(entityId) => this ? (entityId, command, atMost)
       case _ => this ? (key, command, atMost)
     }
   }
 
-  def *![T](keys: List[T], command: C)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): Unit = {
+  def *![T](keys: List[T], command: C)(implicit system: ActorSystem[_], tTag: ClassTag[C]): Unit = {
     for(key <- keys) yield lookup(key) match {
       case Some(entityId) => this ! (entityId, command)
       case _ => this ? (key, command)
     }
   }
 
-  def !?(command: C, atMost: FiniteDuration = defaultAtMost)(
-    implicit request: ActorRef[R] => C = command2Request(command), system: ActorSystem[_], tTag: ClassTag[C]): R =
+  def !?(command: C, atMost: FiniteDuration = defaultAtMost)(implicit system: ActorSystem[_], tTag: ClassTag[C]): R =
     command match {
       case cmd: EntityCommand => this ? (cmd.id, command, atMost)
       case _ => this ? (ALL_KEY, command, atMost)

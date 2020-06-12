@@ -15,7 +15,7 @@ import org.softnetwork._
   */
 trait AccountKeyHandler extends EntityHandler[AccountKeyCommand, AccountKeyCommandResult] with AccountKeyBehavior {
 
-  override protected def command2Request(command: AccountKeyCommand): Request =
+  implicit def command2Request(command: AccountKeyCommand): Request =
     replyTo => AccountKeyCommandWrapper(command, replyTo)
 
 }

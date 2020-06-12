@@ -27,7 +27,7 @@ trait MockAllNotificationsTypeKey extends CommandTypeKey[NotificationCommand]{
 trait NotificationHandler extends EntityHandler[NotificationCommand, NotificationCommandResult]
   with AllNotificationsTypeKey {
 
-  override protected def command2Request(command: NotificationCommand): Request = { (replyTo) =>
+  implicit def command2Request(command: NotificationCommand): Request = { (replyTo) =>
     NotificationCommandWrapper(command, replyTo)
   }
 

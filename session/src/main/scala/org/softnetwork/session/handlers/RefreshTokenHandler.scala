@@ -21,7 +21,7 @@ trait RefreshTokenHandler[T] extends EntityHandler[RefreshTokenCommand, RefreshT
 
   implicit lazy val system: ActorSystem[_] = EntitySystemLocator.system()
 
-  protected def command2Request(command: RefreshTokenCommand) : Request = replyTo =>
+  implicit def command2Request(command: RefreshTokenCommand) : Request = replyTo =>
     RefreshTokenWrapper(command, replyTo)
 
 }

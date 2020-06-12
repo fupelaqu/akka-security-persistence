@@ -1,6 +1,6 @@
 package org.softnetwork.security.handlers
 
-import akka.actor.typed.{ActorSystem, ActorRef}
+import akka.actor.typed.ActorSystem
 import org.softnetwork.akka.handlers.EntityHandler
 import org.softnetwork.akka.persistence.typed.CommandTypeKey
 import org.softnetwork.security.message._
@@ -13,7 +13,7 @@ import scala.reflect.ClassTag
   * Created by smanciot on 18/04/2020.
   */
 trait AccountHandler extends EntityHandler[AccountCommand, AccountCommandResult] {_: CommandTypeKey[AccountCommand] =>
-  override protected def command2Request(command: AccountCommand): Request = { replyTo =>
+  implicit def command2Request(command: AccountCommand): Request = { replyTo =>
     AccountCommandWrapper(command, replyTo)
   }
 
@@ -23,7 +23,7 @@ trait AccountHandler extends EntityHandler[AccountCommand, AccountCommandResult]
     accountKeyDao.lookupAccount(key)
 
   override def ??[T](key: T, command: AccountCommand, atMost: FiniteDuration)(
-    implicit request: (ActorRef[AccountCommandResult]) => AccountCommand, system: ActorSystem[_], tTag: ClassTag[AccountCommand]
+    implicit system: ActorSystem[_], tTag: ClassTag[AccountCommand]
   ): AccountCommandResult =
     command match {
       case _: LookupAccountCommand => lookup(key) match {

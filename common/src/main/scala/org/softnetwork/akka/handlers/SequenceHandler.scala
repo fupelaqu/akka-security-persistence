@@ -10,6 +10,8 @@ import SequenceMessages._
 
 import scala.reflect.ClassTag
 
+import scala.language.implicitConversions
+
 /**
   * Created by smanciot on 09/04/2020.
   */
@@ -19,7 +21,8 @@ trait SequenceTypeKey extends CommandTypeKey[SequenceCommand]{
 
 trait SequenceHandler extends EntityHandler[SequenceCommand, SequenceResult] with SequenceTypeKey {
 
-  def command2Request(command: SequenceCommand) : Request = replyTo => SequenceCommandWrapper(command, replyTo)
+  implicit def command2Request(command: SequenceCommand) : Request =
+    replyTo => SequenceCommandWrapper(command, replyTo)
 
 }
 
