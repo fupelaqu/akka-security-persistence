@@ -1,10 +1,9 @@
 package org.softnetwork.session.handlers
 
-import akka.actor.typed.ActorSystem
 import akka.cluster.sharding.typed.scaladsl.EntityTypeKey
 import com.softwaremill.session.{RefreshTokenLookupResult, RefreshTokenData, RefreshTokenStorage}
 import org.softnetwork.akka.handlers.EntityHandler
-import org.softnetwork.akka.persistence.typed.{CommandTypeKey, EntitySystemLocator}
+import org.softnetwork.akka.persistence.typed.CommandTypeKey
 import org.softnetwork.session.Session
 import org.softnetwork.session.message._
 import org.softnetwork.session.persistence.typed.SessionRefreshTokenBehavior
@@ -18,8 +17,6 @@ import scala.reflect.ClassTag
   */
 trait RefreshTokenHandler[T] extends EntityHandler[RefreshTokenCommand, RefreshTokenResult]
   with RefreshTokenStorage[T]{_: CommandTypeKey[RefreshTokenCommand] =>
-
-  implicit lazy val system: ActorSystem[_] = EntitySystemLocator.system()
 }
 
 trait SessionRefreshTokenTypeKey extends CommandTypeKey[RefreshTokenCommand] {

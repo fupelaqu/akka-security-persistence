@@ -1,8 +1,7 @@
 package org.softnetwork.session
 
-import akka.actor.typed.ActorRef
 import com.softwaremill.session.{RefreshTokenLookupResult, RefreshTokenData}
-import org.softnetwork.akka.message.{Event, CommandResult, CommandWrapper, EntityCommand}
+import org.softnetwork.akka.message.{Event, CommandResult, EntityCommand}
 
 /**
   * Created by smanciot on 16/05/2020.
@@ -14,12 +13,6 @@ package object message {
   sealed trait RefreshTokenCommand extends EntityCommand {
     def selector: String
     override val id = selector
-  }
-
-  @SerialVersionUID(0L)
-  case class RefreshTokenWrapper[C <: RefreshTokenCommand, R <: RefreshTokenResult](command: C, replyTo: ActorRef[R])
-    extends CommandWrapper[C, R] with RefreshTokenCommand {
-    override val selector = command.selector
   }
 
   @SerialVersionUID(0L)

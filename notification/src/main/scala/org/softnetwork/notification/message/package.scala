@@ -1,6 +1,5 @@
 package org.softnetwork.notification
 
-import akka.actor.typed.ActorRef
 import org.softnetwork.akka.message._
 import org.softnetwork.notification.model.Notification
 
@@ -13,12 +12,6 @@ package object message {
 
   @SerialVersionUID(0L)
   case class NotificationTimeout() extends NotificationCommand with AllEntities
-
-  @SerialVersionUID(0L)
-  case class NotificationCommandWrapper[C <: NotificationCommand, R <: NotificationCommandResult]
-  (command: C, replyTo: ActorRef[R]) extends CommandWrapper[C, R] with NotificationCommand{
-    override val id = command.id
-  }
 
   @SerialVersionUID(0L)
   case class AddNotification[T<:Notification](notification: T) extends NotificationCommand {

@@ -1,6 +1,5 @@
 package org.softnetwork.elastic
 
-import akka.actor.typed.ActorRef
 import org.softnetwork.akka.message._
 import org.softnetwork.akka.model.Timestamped
 
@@ -12,12 +11,6 @@ package object message {
   sealed trait ElasticCommand extends EntityCommand
 
   /** Entity Commands **/
-
-  @SerialVersionUID(0L)
-  case class ElasticCommandWrapper[C <: ElasticCommand, R <: ElasticResult](command: C, replyTo: ActorRef[R])
-    extends CommandWrapper[C, R] with ElasticCommand{
-    override val id = command.id
-  }
 
   @SerialVersionUID(0L)
   case class LoadDocument(id: String) extends ElasticCommand

@@ -12,12 +12,6 @@ object SequenceMessages {
   }
 
   @SerialVersionUID(0L)
-  case class SequenceCommandWrapper(command: SequenceCommand, replyTo: ActorRef[SequenceResult]) extends
-    CommandWrapper[SequenceCommand, SequenceResult] with SequenceCommand{
-    override val sequence = command.sequence
-  }
-
-  @SerialVersionUID(0L)
   case class IncSequence(sequence: String) extends SequenceCommand
 
   @SerialVersionUID(0L)

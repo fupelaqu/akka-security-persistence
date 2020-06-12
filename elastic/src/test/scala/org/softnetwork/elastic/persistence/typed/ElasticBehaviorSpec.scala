@@ -6,6 +6,7 @@ import akka.actor.typed.Behavior
 import akka.persistence.jdbc.util.PersistenceTypedActorTestKit
 
 import org.scalatest.wordspec.AnyWordSpecLike
+import org.softnetwork.akka.message.CommandWrapper
 
 import org.softnetwork.elastic.client.MockElasticApi
 
@@ -41,16 +42,16 @@ class ElasticBehaviorSpec extends AnyWordSpecLike with PersistenceTypedActorTest
     "UpdateDocument" in {
       val probe = createTestProbe[ElasticResult]()
       val ref = entityRefFor(TypeKey, "update")
-      ref ! ElasticCommandWrapper(UpdateDocument(Sample("update")), probe.ref)
+      ref ! CommandWrapper(UpdateDocument(Sample("update")), probe.ref)
       probe.expectMessage(DocumentUpdated("update"))
     }
 
     "DeleteDocument" in {
       val probe = createTestProbe[ElasticResult]()
       val ref = entityRefFor(TypeKey, "delete")
-      ref ! ElasticCommandWrapper(CreateDocument(Sample("delete")), probe.ref)
+      ref ! CommandWrapper(CreateDocument(Sample("delete")), probe.ref)
       probe.expectMessage(DocumentCreated("delete"))
-      ref ! ElasticCommandWrapper(DeleteDocument("delete"), probe.ref)
+      ref ! CommandWrapper(DeleteDocument("delete"), probe.ref)
       probe.expectMessage(DocumentDeleted)
     }
 
@@ -58,9 +59,9 @@ class ElasticBehaviorSpec extends AnyWordSpecLike with PersistenceTypedActorTest
       val probe = createTestProbe[ElasticResult]()
       val ref = entityRefFor(TypeKey, "load")
       val sample = Sample("load")
-      ref ! ElasticCommandWrapper(CreateDocument(sample), probe.ref)
+      ref ! CommandWrapper(CreateDocument(sample), probe.ref)
       probe.expectMessage(DocumentCreated("load"))
-      ref ! ElasticCommandWrapper(LoadDocument("load"), probe.ref)
+      ref ! CommandWrapper(LoadDocument("load"), probe.ref)
       probe.expectMessage(DocumentLoaded(sample))
     }
 

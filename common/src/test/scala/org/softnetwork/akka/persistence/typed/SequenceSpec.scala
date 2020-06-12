@@ -30,7 +30,7 @@ class SequenceSpec extends PersistenceTypedActorTestKit with AnyWordSpecLike {
       val probe = createTestProbe[SequenceResult]()
       val ref = entityRefFor(TypeKey, "inc")
       ref ! IncSequence("")
-      ref ! SequenceCommandWrapper(LoadSequence(""), probe.ref)
+      ref ! CommandWrapper(LoadSequence(""), probe.ref)
       probe.expectMessage(SequenceLoaded("inc", 1))
     }
     "handle Dec" in {
@@ -39,7 +39,7 @@ class SequenceSpec extends PersistenceTypedActorTestKit with AnyWordSpecLike {
       ref ! IncSequence("")
       ref ! IncSequence("")
       ref ! DecSequence("")
-      ref ! SequenceCommandWrapper(LoadSequence(""), probe.ref)
+      ref ! CommandWrapper(LoadSequence(""), probe.ref)
       probe.expectMessage(SequenceLoaded("dec", 1))
     }
     "handle Reset" in {
@@ -48,14 +48,14 @@ class SequenceSpec extends PersistenceTypedActorTestKit with AnyWordSpecLike {
       ref ! IncSequence("")
       ref ! IncSequence("")
       ref ! ResetSequence("")
-      ref ! SequenceCommandWrapper(LoadSequence(""), probe.ref)
+      ref ! CommandWrapper(LoadSequence(""), probe.ref)
       probe.expectMessage(SequenceLoaded("reset", 0))
     }
     "handle Load" in {
       val probe = createTestProbe[SequenceResult]()
       val ref = entityRefFor(TypeKey, "load")
       ref ! IncSequence("")
-      ref ! SequenceCommandWrapper(LoadSequence(""), probe.ref)
+      ref ! CommandWrapper(LoadSequence(""), probe.ref)
       probe.expectMessage(SequenceLoaded("load", 1))
     }
   }

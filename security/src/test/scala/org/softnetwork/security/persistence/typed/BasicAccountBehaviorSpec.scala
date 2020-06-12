@@ -4,6 +4,7 @@ import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
 import akka.persistence.jdbc.util.PersistenceTypedActorTestKit
 import org.scalatest.wordspec.AnyWordSpecLike
+import org.softnetwork.akka.message.CommandWrapper
 import org.softnetwork.security.message._
 
 import MockBasicAccountBehavior._
@@ -34,7 +35,7 @@ class BasicAccountBehaviorSpec extends PersistenceTypedActorTestKit with AnyWord
     "fail if confirmed password does not match password" in {
       val probe = createTestProbe[AccountCommandResult]()
       val ref = entityRefFor(TypeKey, "PasswordsNotMatched")
-      ref ! AccountCommandWrapper(SignUp(username, password, Some("fake")), probe.ref)
+      ref ! CommandWrapper(SignUp(username, password, Some("fake")), probe.ref)
       probe.expectMessage(PasswordsNotMatched)
     }
   }

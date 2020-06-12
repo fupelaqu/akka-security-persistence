@@ -17,12 +17,6 @@ package object message {
   /*sealed */trait AccountCommand extends Command
 
   @SerialVersionUID(0L)
-  case class AccountCommandWrapper[
-    C <: AccountCommand,
-    R <: AccountCommandResult](command: C, replyTo: ActorRef[R])
-      extends CommandWrapper[C, R] with AccountCommand
-
-  @SerialVersionUID(0L)
   case class SignUp(
                      login: String,
                      password: String,
@@ -37,12 +31,6 @@ package object message {
   case object DestroyAccount extends AccountCommand
 
   sealed trait LookupAccountCommand  extends AccountCommand
-
-  @SerialVersionUID(0L)
-  case class LookupAccountCommandWrapper[
-  C <: LookupAccountCommand,
-  R <: AccountCommandResult](command: C, replyTo: ActorRef[R])
-    extends CommandWrapper[C, R] with LookupAccountCommand
 
   @SerialVersionUID(0L)
   case class Login(login: String, password: String, refreshable: Boolean = false) extends AccountCommand
@@ -200,12 +188,6 @@ package object message {
   case object LookupAccountKey extends AccountKeyCommand
 
   trait AccountKeyCommandResult extends AccountCommandResult
-
-  @SerialVersionUID(0L)
-  case class AccountKeyCommandWrapper[
-  C <: AccountKeyCommand,
-  R <: AccountKeyCommandResult](command: C, replyTo: ActorRef[R])
-    extends CommandWrapper[C, R] with AccountKeyCommand
 
   @SerialVersionUID(0L)
   case class AccountKeyFound(account: String) extends AccountKeyCommandResult
