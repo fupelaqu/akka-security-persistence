@@ -33,6 +33,6 @@ object SecurityApplication extends Application with PostgresGuardian {
 
   override def initSystem(system: ActorSystem[_]) = {
     val root = Settings.AdministratorsConfig.root
-    BasicAccountDao.initAdminAccount(root.login, root.password)(system)
+    BasicAccountDao.initAdminAccount(root.login, root.password)
   }
 }

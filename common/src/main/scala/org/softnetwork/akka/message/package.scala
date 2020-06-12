@@ -20,6 +20,13 @@ package object message {
     def command: C
   }
 
+  object CommandWrapper {
+    def apply[C <: Command, R <: CommandResult](aCommand: C, aReplyTo: ActorRef[R]) = new CommandWrapper[C, R] {
+      override val command = aCommand
+      override val replyTo = aReplyTo
+    }.asInstanceOf[C]
+  }
+
   /** Entity command **/
 
   /**

@@ -86,6 +86,7 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
 
   def init(system: ActorSystem[_])(implicit tTag: ClassTag[C], m: Manifest[S]): Unit = {
     if(!initialized){
+      EntitySystemLocator(system)
       ClusterSharding(system)init Entity(TypeKey) { entityContext =>
         this(entityContext.entityId, PersistenceId(entityContext.entityTypeKey.name, entityContext.entityId))
       }

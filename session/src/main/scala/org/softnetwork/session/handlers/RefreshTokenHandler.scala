@@ -20,10 +20,6 @@ trait RefreshTokenHandler[T] extends EntityHandler[RefreshTokenCommand, RefreshT
   with RefreshTokenStorage[T]{_: CommandTypeKey[RefreshTokenCommand] =>
 
   implicit lazy val system: ActorSystem[_] = EntitySystemLocator.system()
-
-  implicit def command2Request(command: RefreshTokenCommand) : Request = replyTo =>
-    RefreshTokenWrapper(command, replyTo)
-
 }
 
 trait SessionRefreshTokenTypeKey extends CommandTypeKey[RefreshTokenCommand] {

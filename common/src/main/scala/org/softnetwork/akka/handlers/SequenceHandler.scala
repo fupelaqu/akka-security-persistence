@@ -19,12 +19,7 @@ trait SequenceTypeKey extends CommandTypeKey[SequenceCommand]{
   override def TypeKey(implicit tTag: ClassTag[SequenceCommand]): EntityTypeKey[SequenceCommand] = Sequence.TypeKey
 }
 
-trait SequenceHandler extends EntityHandler[SequenceCommand, SequenceResult] with SequenceTypeKey {
-
-  implicit def command2Request(command: SequenceCommand) : Request =
-    replyTo => SequenceCommandWrapper(command, replyTo)
-
-}
+trait SequenceHandler extends EntityHandler[SequenceCommand, SequenceResult] with SequenceTypeKey
 
 object SequenceHandler extends SequenceHandler
 

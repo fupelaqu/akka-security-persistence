@@ -15,8 +15,8 @@ import org.softnetwork._
   */
 trait AccountKeyHandler extends EntityHandler[AccountKeyCommand, AccountKeyCommandResult] with AccountKeyBehavior {
 
-  implicit def command2Request(command: AccountKeyCommand): Request =
-    replyTo => AccountKeyCommandWrapper(command, replyTo)
+//  implicit def command2Request(command: AccountKeyCommand): Request =
+//    replyTo => AccountKeyCommandWrapper(command, replyTo)
 
 }
 
@@ -24,7 +24,7 @@ object AccountKeyHandler extends AccountKeyHandler
 
 trait AccountKeyDao {_: AccountKeyHandler =>
 
-  def lookupAccount(key: String)(implicit system: ActorSystem[_]): Option[String] = {
+  def lookupAccount(key: String): Option[String] = {
     this ? (generateUUID(Some(key)), LookupAccountKey) match {
       case r: AccountKeyFound =>
         import r._
@@ -36,12 +36,12 @@ trait AccountKeyDao {_: AccountKeyHandler =>
     }
   }
 
-  def addAccountKey(key: String, account: String)(implicit system: ActorSystem[_]): Unit = {
+  def addAccountKey(key: String, account: String): Unit = {
     logger.info(s"adding ($key, $account)")
     this ! (generateUUID(Some(key)), AddAccountKey(account))
   }
 
-  def removeAccountKey(key: String)(implicit system: ActorSystem[_]): Unit = {
+  def removeAccountKey(key: String): Unit = {
     logger.info(s"removing ($key)")
     this ! (generateUUID(Some(key)), RemoveAccountKey)
   }

@@ -16,8 +16,6 @@ import scala.language.existentials
   */
 trait ElasticHandler[T <: Timestamped] extends EntityHandler[ElasticCommand, ElasticResult] {
   _: CommandTypeKey[ElasticCommand] =>
-  implicit def command2Request(command: ElasticCommand): Request =
-    replyTo => ElasticCommandWrapper(command, replyTo)
 }
 
 trait ElasticDao[T <: Timestamped] {_: ElasticHandler[T] =>

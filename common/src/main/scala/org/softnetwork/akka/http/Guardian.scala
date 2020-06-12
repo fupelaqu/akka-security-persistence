@@ -15,7 +15,7 @@ import org.softnetwork.akka.persistence.jdbc.util.{Postgres, Db}
 
 import org.softnetwork.akka.persistence.query.{EventProcessor, EventProcessorStream}
 
-import org.softnetwork.akka.persistence.typed.EntityBehavior
+import org.softnetwork.akka.persistence.typed.{EntitySystemLocator, EntityBehavior}
 
 /**
   * Created by smanciot on 15/05/2020.
@@ -65,6 +65,8 @@ trait Guardian {_: Db =>
       initSchema()
 
       val system = context.system
+
+      EntitySystemLocator(system)
 
       // initialize behaviors
       for(behavior <- behaviors(system)) {

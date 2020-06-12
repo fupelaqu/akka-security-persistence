@@ -22,26 +22,31 @@ object EntitySystemLocator extends StrictLogging {
   private[this] var _system: Option[ActorSystem[_]] = None
 
   def apply(system: ActorSystem[_]): Unit = {
-    _system = Some(system)
+    if(_system.isEmpty){
+      _system = Some(system)
+      system.registerOnTermination(() => _system = None)
+    }
   }
 
-  def entityRefFor[R <: Command](typeKey: EntityTypeKey[R], entityId: String): EntityRef[R] =
+  def entityRefFor[C <: Command](typeKey: EntityTypeKey[C], entityId: String): EntityRef[C] =
     Try(ClusterSharding(system()).entityRefFor(typeKey, entityId)) match {
       case Success(s) => s
       case Failure(f) =>
         logger.error(
           s"""
              |Could not find entity for ${typeKey.name}|$entityId
-             |using ${_system.map(_.path.toString).getOrElse("UNKNOWN")}
+             |using ${_system.map(_.path.toString).getOrElse("Unknown system")}
              |""".stripMargin)
         throw f
     }
 
   def system(): ActorSystem[_] = _system match {
     case Some(s) => s
-    case _       => throw new IllegalStateException
+    case _       => throw new IllegalStateException(
+      "a call to init(ActorSystem[_]) should be made prior to use EntitySystemLocator"
+    )
   }
 
-  def classicActorSystem(): classic.ActorSystem = system()
+  def classicSystem(): classic.ActorSystem = system()
 
 }

@@ -115,7 +115,7 @@ class MainRoutesSpec extends AnyWordSpecLike with PersistenceTypedRouteTestKit w
       }
     }
     "work with matching email and password" in {
-      AccountKeyDao.lookupAccount(email)(typedSystem()) match {
+      AccountKeyDao.lookupAccount(email) match {
         case Some(uuid) =>
           Get(s"/api/${Settings.Path}/activate", Activate(MockGenerator.computeToken(uuid))) ~> mainRoutes.routes
           Post(s"/api/${Settings.Path}/login", Login(email, password)) ~> mainRoutes.routes ~> check {
