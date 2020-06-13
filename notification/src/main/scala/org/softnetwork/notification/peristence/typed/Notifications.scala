@@ -58,16 +58,16 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           case n: Push => Some(PushRecordedEvent(n))
           case _ => None
         }) match {
-          case Some(event) => Effect.persist(event).thenRun(maybeReply(replyTo, _ => NotificationAdded(entityId)))
+          case Some(event) => Effect.persist(event).thenRun(_ => NotificationAdded(entityId) ~> replyTo)
           case _ => Effect.unhandled
         }
 
       case cmd: RemoveNotification =>
-        Effect.persist(
+        Effect.persist[NotificationEvent, Option[T]](
           NotificationRemovedEvent(
             entityId
           )
-        ).thenRun(maybeReply(replyTo, _ => NotificationRemoved)).thenStop()
+        ).thenRun(_ => NotificationRemoved ~> replyTo).thenStop()
 
       case cmd: SendNotification[T] => sendNotification(entityId, cmd.notification, replyTo)
 
@@ -76,11 +76,11 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           import s._
           import NotificationStatus._
           status match {
-            case Sent      => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationSent(entityId)))
-            case Delivered => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationDelivered(entityId)))
+            case Sent      => Effect.none.thenRun(_ => NotificationSent(entityId) ~> replyTo)
+            case Delivered => Effect.none.thenRun(_ => NotificationDelivered(entityId) ~> replyTo)
             case _         => sendNotification(entityId, s, replyTo)
           }
-        case _ => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationNotFound))
+        case _ => Effect.none.thenRun(_ => NotificationNotFound ~> replyTo)
       }
 
       case cmd: GetNotificationStatus =>
@@ -89,13 +89,13 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
             import s._
             import NotificationStatus._
             status match {
-              case Sent        => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationSent(entityId)))
-              case Delivered   => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationDelivered(entityId)))
-              case Rejected    => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationRejected(entityId)))
-              case Undelivered => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationUndelivered(entityId)))
+              case Sent        => Effect.none.thenRun(_ => NotificationSent(entityId) ~> replyTo)
+              case Delivered   => Effect.none.thenRun(_ => NotificationDelivered(entityId) ~> replyTo)
+              case Rejected    => Effect.none.thenRun(_ => NotificationRejected(entityId) ~> replyTo)
+              case Undelivered => Effect.none.thenRun(_ => NotificationUndelivered(entityId) ~> replyTo)
               case _           => ack(entityId, s, replyTo) // Pending
             }
-          case _ => Effect.none.thenRun(maybeReply(replyTo, _ => NotificationNotFound))
+          case _ => Effect.none.thenRun(_ => NotificationNotFound ~> replyTo)
         }
 
       case _: NotificationTimeout =>
@@ -181,17 +181,17 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
     }) match {
       case Some(event) =>
         Effect.persist(event)
-          .thenRun(maybeReply(replyTo, {
+          .thenRun(state => {
             import NotificationStatus._
             ack.status match {
-              case Rejected    => _ => NotificationRejected(_uuid)
-              case Undelivered => _ => NotificationUndelivered(_uuid)
-              case Sent        => _ => NotificationSent(_uuid)
-              case Delivered   => _ => NotificationDelivered(_uuid)
-              case _           => _ => NotificationPending(_uuid)
+              case Rejected    => NotificationRejected(_uuid)
+              case Undelivered => NotificationUndelivered(_uuid)
+              case Sent        => NotificationSent(_uuid)
+              case Delivered   => NotificationDelivered(_uuid)
+              case _           => NotificationPending(_uuid)
             }
           }
-        ))
+        ~> replyTo)
       case _ => Effect.unhandled
     }
   }
@@ -251,17 +251,17 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
     }) match {
       case Some(event) =>
         Effect.persist(event)
-          .thenRun(maybeReply(replyTo, {
+          .thenRun(state => {
             import NotificationStatus._
             event.notification.status match {
-              case Rejected    => _ => NotificationRejected(_uuid)
-              case Undelivered => _ => NotificationUndelivered(_uuid)
-              case Sent        => _ => NotificationSent(_uuid)
-              case Delivered   => _ => NotificationDelivered(_uuid)
-              case _           => _ => NotificationPending(_uuid)
+              case Rejected    => NotificationRejected(_uuid)
+              case Undelivered => NotificationUndelivered(_uuid)
+              case Sent        => NotificationSent(_uuid)
+              case Delivered   => NotificationDelivered(_uuid)
+              case _           => NotificationPending(_uuid)
             }
           }
-        ))
+        ~> replyTo)
       case _ => Effect.unhandled
     }
   }

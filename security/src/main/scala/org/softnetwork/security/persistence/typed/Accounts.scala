@@ -407,7 +407,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
       case cmd: InitAdminAccount =>
         import cmd._
         rules.validate(password) match {
-          case Left(errorCodes) => Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPassword(errorCodes)))
+          case Left(errorCodes) => Effect.none.thenRun(_ => InvalidPassword(errorCodes) ~> replyTo)
           case Right(success) if success =>
             state match {
               case Some(account) =>
@@ -418,7 +418,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                     account.verificationCode,
                     account.verificationToken
                   )
-                ).thenRun(maybeReply(replyTo, state => AdminAccountInitialized))
+                ).thenRun(state => AdminAccountInitialized ~> replyTo)
               case _ =>
                 createAccount(entityId, cmd) match {
                   case Some(account) =>
@@ -426,12 +426,12 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                     if(!secondaryPrincipals.exists((principal) => accountKeyDao.lookupAccount(principal.value).isDefined)){
                       Effect.persist[AccountEvent, Option[T]](
                         createAccountCreatedEvent(account)
-                      ).thenRun(maybeReply(replyTo, state => AdminAccountInitialized))
+                      ).thenRun(state => AdminAccountInitialized ~> replyTo)
                     }
                     else {
-                      Effect.none.thenRun(maybeReply(replyTo, _ => LoginAlreadyExists))
+                      Effect.none.thenRun(_ => LoginAlreadyExists ~> replyTo)
                     }
-                  case _ => Effect.none.thenRun(maybeReply(replyTo, _ => LoginUnaccepted))
+                  case _ => Effect.none.thenRun(_ => LoginUnaccepted ~> replyTo)
               }
             }
         }
@@ -440,11 +440,11 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
       case cmd: SignUp =>
         import cmd._
         if(confirmPassword.isDefined && !password.equals(confirmPassword.get)){
-          Effect.none.thenRun(maybeReply(replyTo, _ => PasswordsNotMatched)).thenStop()
+          Effect.none.thenRun(_ => PasswordsNotMatched ~> replyTo)//.thenStop()
         }
         else{
           rules.validate(password) match {
-            case Left(errorCodes)          => Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPassword(errorCodes)))
+            case Left(errorCodes)          => Effect.none.thenRun(_ => InvalidPassword(errorCodes) ~> replyTo)
             case Right(success) if success =>
               createAccount(entityId, cmd) match {
                 case Some(account) =>
@@ -480,27 +480,24 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                       }
                     Effect.persist[AccountEvent, Option[T]](createAccountCreatedEvent(updatedAccount))
                       .thenRun(
-                        maybeReply(
-                          replyTo,
-                          _ =>
-                            if(activationRequired && !notified) {
-                              UndeliveredActivationToken
-                            }
-                            else {
-                              if(updatedAccount.status == AccountStatus.Active){
-                                if(sendRegistration(entityId, updatedAccount)){
-                                  removeRegistration(entityId)
-                                }
+                        _ =>
+                          if(activationRequired && !notified) {
+                            UndeliveredActivationToken
+                          }
+                          else {
+                            if(updatedAccount.status == AccountStatus.Active){
+                              if(sendRegistration(entityId, updatedAccount)){
+                                removeRegistration(entityId)
                               }
-                              AccountCreated(updatedAccount)
                             }
-                        )
+                            AccountCreated(updatedAccount)
+                          } ~> replyTo
                       )
                   }
                   else {
-                    Effect.none.thenRun(maybeReply(replyTo, _ => LoginAlreadyExists))
+                    Effect.none.thenRun(_ => LoginAlreadyExists ~> replyTo)
                   }
-                case _             => Effect.none.thenRun(maybeReply(replyTo, _ => LoginUnaccepted))
+                case _             => Effect.none.thenRun(_ => LoginUnaccepted ~> replyTo)
               }
           }
         }
@@ -529,19 +526,19 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                       entityId,
                       activationToken
                     )
-                  ).thenRun(maybeReply(replyTo, _ => TokenExpired))
+                  ).thenRun(_ => TokenExpired ~> replyTo)
                 }
                 else if(v.token != token){
-                  Effect.none.thenRun(maybeReply(replyTo, _ => InvalidToken))
+                  Effect.none.thenRun(_ => InvalidToken ~> replyTo)
                 }
                 else{
                   Effect.persist[AccountEvent, Option[T]](AccountActivatedEvent(entityId))
-                    .thenRun(maybeReply(replyTo, (state) => AccountActivated(state.getOrElse(account))))
+                    .thenRun(state => AccountActivated(state.getOrElse(account)) ~> replyTo)
                 }
-              case _       => Effect.none.thenRun(maybeReply(replyTo, _ => TokenNotFound))
+              case _       => Effect.none.thenRun(_ => TokenNotFound ~> replyTo)
             }
-          case None    => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
-          case _       => Effect.none.thenRun(maybeReply(replyTo, _ => IllegalStateError))
+          case None    => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
+          case _       => Effect.none.thenRun(_ => IllegalStateError ~> replyTo)
         }
 
       /** handle login **/
@@ -556,10 +553,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                   entityId,
                   now()
                 )
-              ).thenRun(maybeReply(replyTo, (state) => new LoginSucceededResult(state.get)))
+              ).thenRun(state => new LoginSucceededResult(state.get) ~> replyTo)
             }
             else if(!checkLogin){
-              Effect.none.thenRun(maybeReply(replyTo, _ => LoginAndPasswordNotMatched))
+              Effect.none.thenRun(_ => LoginAndPasswordNotMatched ~> replyTo)
             }
             else { // wrong password
               val nbLoginFailures = account.nbLoginFailures + 1
@@ -576,7 +573,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                     nbLoginFailures
                   )
               )
-                .thenRun(maybeReply(replyTo, (state) => {
+                .thenRun(state => {
                   if(disabled){
                     if(account.status != AccountStatus.Disabled){
                       log.info(s"reset password required for ${account.primaryPrincipal.value}")
@@ -588,16 +585,16 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                     log.info(s"$nbLoginFailures login failure(s) for ${account.primaryPrincipal.value}")
                     LoginAndPasswordNotMatched
                   }
-                }))
+                } ~> replyTo)
             }
           case Some(account) if account.status == AccountStatus.Disabled =>
             log.info(s"reset password required for ${account.primaryPrincipal.value}")
             sendAccountDisabled(entityId, account)
-            Effect.none.thenRun(maybeReply(replyTo, _ => AccountDisabled))
+            Effect.none.thenRun(_ => AccountDisabled ~> replyTo)
           case None                                                      =>
-            Effect.none.thenRun(maybeReply(replyTo, _ => LoginAndPasswordNotMatched)) //WrongLogin
+            Effect.none.thenRun(_ => LoginAndPasswordNotMatched ~> replyTo) //WrongLogin
           case _                                                         =>
-            Effect.none.thenRun(maybeReply(replyTo, _ => IllegalStateError))
+            Effect.none.thenRun(_ => IllegalStateError ~> replyTo)
         }
 
       /** handle send verification code **/
@@ -615,12 +612,12 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                   entityId,
                   verificationCode
                 )
-              ).thenRun(maybeReply(replyTo, _ => if(notified) VerificationCodeSent else UndeliveredVerificationCode))
-            case _ => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+              ).thenRun(_ => (if(notified) VerificationCodeSent else UndeliveredVerificationCode) ~> replyTo)
+            case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
           }
         }
         else{
-          Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPrincipal))
+          Effect.none.thenRun(_ => InvalidPrincipal ~> replyTo)
         }
 
       case cmd: SendResetPasswordToken =>
@@ -637,12 +634,12 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                   entityId,
                   verificationToken
                 )
-              ).thenRun(maybeReply(replyTo, _ => if(notified) ResetPasswordTokenSent else UndeliveredResetPasswordToken))
-            case _ => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+              ).thenRun(_ => (if(notified) ResetPasswordTokenSent else UndeliveredResetPasswordToken) ~> replyTo)
+            case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
           }
         }
         else{
-          Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPrincipal))
+          Effect.none.thenRun(_ => InvalidPrincipal ~> replyTo)
         }
 
       case cmd: CheckResetPasswordToken =>
@@ -664,28 +661,28 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                       entityId,
                       verificationToken
                     )
-                  ).thenRun(maybeReply(replyTo, _ => if(notified) NewResetPasswordTokenSent else UndeliveredResetPasswordToken))
+                  ).thenRun(_ => (if(notified) NewResetPasswordTokenSent else UndeliveredResetPasswordToken) ~> replyTo)
                 }
                 else{
                   if(v.token != token){
                     log.warn(s"tokens do not match !!!!!")
                   }
-                  Effect.none.thenRun(maybeReply(replyTo, _ => ResetPasswordTokenChecked))
+                  Effect.none.thenRun(_ => ResetPasswordTokenChecked ~> replyTo)
                 }
-              case _       => Effect.none.thenRun(maybeReply(replyTo, _ => TokenNotFound))
+              case _       => Effect.none.thenRun(_ => TokenNotFound ~> replyTo)
             }
-          case _             => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+          case _             => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
       case cmd: ResetPassword =>
         import cmd._
         val _confirmedPassword = confirmedPassword.getOrElse(newPassword)
         if(!newPassword.equals(_confirmedPassword)){
-          Effect.none.thenRun(maybeReply(replyTo, _ => PasswordsNotMatched))
+          Effect.none.thenRun(_ => PasswordsNotMatched ~> replyTo)
         }
         else {
           rules.validate(newPassword) match {
-            case Left(errorCodes) => Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPassword(errorCodes)))
+            case Left(errorCodes) => Effect.none.thenRun(_ => InvalidPassword(errorCodes) ~> replyTo)
             case Right(success) if success =>
               state match {
                 case Some(account) =>
@@ -701,15 +698,15 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                               None,
                               account.verificationToken
                             )
-                          ).thenRun(maybeReply(replyTo, _ => {
+                          ).thenRun(_ => {
                             accountKeyDao.removeAccountKey(verification.code)
                             PasswordReseted(entityId)
-                          }))
+                          } ~> replyTo)
                         }
                         else {
-                          Effect.none.thenRun(maybeReply(replyTo, _ => CodeExpired))
+                          Effect.none.thenRun(_ => CodeExpired ~> replyTo)
                         }
-                      case _ => Effect.none.thenRun(maybeReply(replyTo, _ => CodeNotFound))
+                      case _ => Effect.none.thenRun(_ => CodeNotFound ~> replyTo)
                     }
                   }
                   else {
@@ -723,18 +720,18 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                               account.verificationCode,
                               None
                             )
-                          ).thenRun(maybeReply(replyTo, _ => {
+                          ).thenRun(_ => {
                               accountKeyDao.removeAccountKey(verification.token)
                               PasswordReseted(entityId)
-                            }))
+                            } ~> replyTo)
                         }
                         else {
-                          Effect.none.thenRun(maybeReply(replyTo, _ => TokenExpired))
+                          Effect.none.thenRun(_ => TokenExpired ~> replyTo)
                         }
-                      case _ => Effect.none.thenRun(maybeReply(replyTo, _ => TokenNotFound))
+                      case _ => Effect.none.thenRun(_ => TokenNotFound ~> replyTo)
                     }
                   }
-                case _ => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+                case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
               }
           }
         }
@@ -744,11 +741,11 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
         import cmd._
         val _confirmedPassword = confirmedPassword.getOrElse(newPassword)
         if(!newPassword.equals(_confirmedPassword)){
-          Effect.none.thenRun(maybeReply(replyTo, _ => PasswordsNotMatched))
+          Effect.none.thenRun(_ => PasswordsNotMatched ~> replyTo)
         }
         else{
           rules.validate(newPassword) match {
-            case Left(errorCodes)          => Effect.none.thenRun(maybeReply(replyTo, _ => InvalidPassword(errorCodes)))
+            case Left(errorCodes)          => Effect.none.thenRun(_ => InvalidPassword(errorCodes) ~> replyTo)
             case Right(success) if success =>
               state match {
                 case Some(account) =>
@@ -761,15 +758,15 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                         account.verificationCode,
                         account.verificationToken
                       )
-                    ).thenRun(maybeReply(replyTo, state => {
+                    ).thenRun(state => {
                         sendPasswordUpdated(entityId, state.get)
                         PasswordUpdated(state.get)
-                      }))
+                      } ~> replyTo)
                   }
                   else {
-                    Effect.none.thenRun(maybeReply(replyTo, _ => LoginAndPasswordNotMatched))
+                    Effect.none.thenRun(_ => LoginAndPasswordNotMatched ~> replyTo)
                   }
-                case _       => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+                case _       => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
               }
           }
         }
@@ -783,7 +780,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
             entityId,
             cmd.registration
           )
-        ).thenRun(maybeReply(replyTo, _ => DeviceRegistered))
+        ).thenRun(_ => DeviceRegistered ~> replyTo)
 
       /**
         * handle device unregistration
@@ -798,10 +795,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                     entityId,
                     r
                   )
-                ).thenRun(maybeReply(replyTo, _ => DeviceUnregistered))
-              case _       => Effect.none.thenRun(maybeReply(replyTo, _ => DeviceRegistrationNotFound))
+                ).thenRun(_ => DeviceUnregistered ~> replyTo)
+              case _       => Effect.none.thenRun(_ => DeviceRegistrationNotFound ~> replyTo)
             }
-          case _       => Effect.none.thenRun(maybeReply(replyTo, _ => DeviceRegistrationNotFound))
+          case _       => Effect.none.thenRun(_ => DeviceRegistrationNotFound ~> replyTo)
         }
 
       /** handle unsubscribe **/
@@ -810,8 +807,8 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
           case Some(account) =>
             Effect.persist[AccountEvent, Option[T]](
               AccountDeletedEvent(entityId)
-            ).thenRun(maybeReply(replyTo, state => AccountDeleted(state.get)))
-          case _ => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+            ).thenRun(state => AccountDeleted(state.get) ~> replyTo)
+          case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
       case _: DestroyAccount.type =>
@@ -819,11 +816,11 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
           case Some(account) =>
             Effect.persist[AccountEvent, Option[T]](
               AccountDestroyedEvent(entityId)
-            ).thenRun(maybeReply(replyTo, _ => AccountDestroyed(entityId)))
-          case _ => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+            ).thenRun(_ => AccountDestroyed(entityId) ~> replyTo)
+          case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
-      case _: Logout.type    => Effect.none.thenRun(maybeReply(replyTo, _ => LogoutSucceeded))
+      case _: Logout.type    => Effect.none.thenRun(_ => LogoutSucceeded ~> replyTo)
 
       case cmd: UpdateProfile  =>
         import cmd._
@@ -832,10 +829,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
             val phoneNumber = profile.phoneNumber.getOrElse("").trim
             val email = profile.email.getOrElse("").trim
             if(phoneNumber.length > 0 && accountKeyDao.lookupAccount(phoneNumber).getOrElse(entityId) != entityId){
-              Effect.none.thenRun(maybeReply(replyTo, _ => GsmAlreadyExists))
+              Effect.none.thenRun(_ => GsmAlreadyExists ~> replyTo)
             }
             else if(email.length > 0 && accountKeyDao.lookupAccount(email).getOrElse(entityId) != entityId){
-              Effect.none.thenRun(maybeReply(replyTo, _ => EmailAlreadyExists))
+              Effect.none.thenRun(_ => EmailAlreadyExists ~> replyTo)
             }
             else{
               Effect.persist[AccountEvent, Option[T]](
@@ -843,11 +840,11 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                   entityId,
                   account.completeProfile(profile).asInstanceOf[P]
                 )
-              ).thenRun(maybeReply(replyTo, _ => {
+              ).thenRun(_ => {
                 ProfileUpdated
-              }))
+              } ~> replyTo)
             }
-          case _             => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+          case _             => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
       case cmd: SwitchProfile  =>
@@ -859,10 +856,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                 entityId,
                 name
               )
-            ).thenRun(maybeReply(replyTo, _ => {
+            ).thenRun(_ => {
               ProfileSwitched(account.profile(Some(name)))
-            }))
-          case _             => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+            } ~> replyTo)
+          case _             => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
       case cmd: LoadProfile =>
@@ -870,10 +867,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
         state match {
           case Some(account) =>
             account.profile(name) match {
-              case Some(profile) => Effect.none.thenRun(maybeReply(replyTo, _ => ProfileLoaded(profile)))
-              case _             => Effect.none.thenRun(maybeReply(replyTo, _ => ProfileNotFound))
+              case Some(profile) => Effect.none.thenRun(_ => ProfileLoaded(profile) ~> replyTo)
+              case _             => Effect.none.thenRun(_ => ProfileNotFound ~> replyTo)
             }
-          case _             => Effect.none.thenRun(maybeReply(replyTo, _ => AccountNotFound))
+          case _             => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
         }
 
       /** no handlers **/
@@ -1079,7 +1076,7 @@ trait AccountKeyBehavior extends EntityBehavior[
         Effect.persist(
           AccountKeyAdded(entityId, cmd.account)
         ).thenRun(
-          maybeReply(replyTo, _ => AccountKeyAdded(entityId, cmd.account))
+          _ => AccountKeyAdded(entityId, cmd.account) ~> replyTo
         )
 
       case RemoveAccountKey =>
@@ -1088,13 +1085,13 @@ trait AccountKeyBehavior extends EntityBehavior[
             entityId
           )
         ).thenRun(
-          maybeReply(replyTo, _ => AccountKeyRemoved(entityId))
+          _ => AccountKeyRemoved(entityId) ~> replyTo
         )//.thenStop()
 
       case LookupAccountKey =>
         state match {
-          case Some(s) => Effect.none.thenRun(maybeReply(replyTo, _ => AccountKeyFound(s.account)))
-          case _       => Effect.none.thenRun(maybeReply(replyTo, _ => AccountKeyNotFound))
+          case Some(s) => Effect.none.thenRun(_ => AccountKeyFound(s.account) ~> replyTo)
+          case _       => Effect.none.thenRun(_ => AccountKeyNotFound ~> replyTo)
         }
 
       case _ => super.handleCommand(entityId, state, command, replyTo, self)

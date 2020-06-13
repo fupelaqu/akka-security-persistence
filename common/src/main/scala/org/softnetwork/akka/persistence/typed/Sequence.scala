@@ -21,6 +21,8 @@ import SequenceMessages._
 trait Sequence extends EntityBehavior[SequenceCommand, SequenceState, SequenceEvent, SequenceResult]{
   val persistenceId = "Sequence"
 
+  private[this] def value(state: Option[SequenceState]): Int = state.map(_.value).getOrElse(0)
+
   override def handleCommand( entityId: String,
                               state: Option[SequenceState],
                               command: SequenceCommand,
@@ -29,14 +31,19 @@ trait Sequence extends EntityBehavior[SequenceCommand, SequenceState, SequenceEv
     implicit system: ActorSystem[_], log: Logger, m: Manifest[SequenceState], timers: TimerScheduler[SequenceCommand]
   ): Effect[SequenceEvent, Option[SequenceState]] = {
     command match {
+
       case _: IncSequence   => Effect.persist(SequenceIncremented(entityId, state.map(_.value+1).getOrElse(1)))
-        .thenRun(maybeReply(replyTo, state => SequenceIncremented(entityId, state.map(_.value).getOrElse(0))))
+        .thenRun(state => SequenceIncremented(entityId, value(state)) ~> replyTo)
+
       case _: DecSequence   => Effect.persist(SequenceDecremented(entityId, state.map(_.value-1).getOrElse(0)))
-        .thenRun(maybeReply(replyTo, state => SequenceDecremented(entityId, state.map(_.value).getOrElse(0))))
+        .thenRun(state => SequenceDecremented(entityId, value(state)) ~> replyTo)
+
       case _: ResetSequence => Effect.persist(SequenceResetted(entityId))
-        .thenRun(maybeReply(replyTo, state => SequenceResetted(entityId)))
+        .thenRun(_ => SequenceResetted(entityId) ~> replyTo)
+
       case _: LoadSequence  => Effect.none
-        .thenRun(maybeReply(replyTo, state => SequenceLoaded(entityId, state.map(_.value).getOrElse(0))))
+        .thenRun(state => SequenceLoaded(entityId, value(state)) ~> replyTo)
+
       case _                => Effect.unhandled
     }
   }

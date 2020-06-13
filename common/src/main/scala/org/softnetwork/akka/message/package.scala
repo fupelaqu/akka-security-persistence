@@ -12,14 +12,27 @@ package object message {
   /** Command objects **/
   trait Command
 
+  /**
+    * a command which includes a reference to the actor identity to whom a reply has to be sent
+    *
+    * @tparam R - type of command result
+    */
   trait CommandWithReply[R <: CommandResult] extends Command {
     def replyTo: ActorRef[R]
   }
 
+  /**
+    * a wrapper arround a command and its reference to the actor identity to whom a reply has to be sent
+    * @tparam C - type of command
+    * @tparam R - type of command result
+    */
   trait CommandWrapper[C <: Command, R <: CommandResult] extends CommandWithReply[R] {
     def command: C
   }
 
+  /**
+    * CommandWrapper companion object
+    */
   object CommandWrapper {
     def apply[C <: Command, R <: CommandResult](aCommand: C, aReplyTo: ActorRef[R]) = new CommandWrapper[C, R] {
       override val command = aCommand
@@ -30,19 +43,19 @@ package object message {
   /** Entity command **/
 
   /**
-    * when a command is not related to a specific entity
+    * when a command is not intended to be handled by a specific entity
     */
   val ALL = "*"
 
   /**
-    * a command that should be performed for a specific entity
+    * a command that should be handled by a specific entity
     */
   trait EntityCommand extends Command {
     def id: String // TODO rename to uuid ?
   }
 
   /**
-    * allow a command to be performed for no specific entity
+    * allow a command to be handled by no specific entity
     */
   trait AllEntities extends EntityCommand {_: Command =>
     override val id: String = ALL

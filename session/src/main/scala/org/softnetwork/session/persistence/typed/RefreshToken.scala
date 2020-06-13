@@ -31,16 +31,8 @@ object RefreshToken {
 
 import RefreshToken._
 
-trait RefreshTokenBehavior[
-  T,
-  C <: RefreshTokenCommand,
-  E <: RefreshTokenEvent,
-  R <: RefreshTokenResult]
-  extends EntityBehavior[C, RefreshTokenState[T], E, R] {
-
-  implicit def toR[U <: RefreshTokenResult](result: U): R
-
-  implicit def toE[U <: RefreshTokenEvent](event: U): E
+trait RefreshTokenBehavior[T]
+  extends EntityBehavior[RefreshTokenCommand, RefreshTokenState[T], RefreshTokenEvent, RefreshTokenResult] {
 
   /**
     *
@@ -52,33 +44,30 @@ trait RefreshTokenBehavior[
     */
   override def handleCommand( entityId: String,
                               state: Option[RefreshTokenState[T]],
-                              command: C,
-                              replyTo: Option[ActorRef[R]],
-                              self: ActorRef[C])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[RefreshTokenState[T]], timers: TimerScheduler[C]
-  ): Effect[E, Option[RefreshTokenState[T]]] = {
+                              command: RefreshTokenCommand,
+                              replyTo: Option[ActorRef[RefreshTokenResult]],
+                              self: ActorRef[RefreshTokenCommand])(
+    implicit system: ActorSystem[_], log: Logger, m: Manifest[RefreshTokenState[T]], timers: TimerScheduler[RefreshTokenCommand]
+  ): Effect[RefreshTokenEvent, Option[RefreshTokenState[T]]] = {
     command match {
 
       case cmd: StoreRefreshToken[T] =>
-        Effect.persist[E, Option[RefreshTokenState[T]]](RefreshTokenStored(cmd.data))
-          .thenRun(maybeReply(replyTo, _ => RefreshTokenStored(cmd.data)))
+        Effect.persist[RefreshTokenEvent, Option[RefreshTokenState[T]]](RefreshTokenStored(cmd.data))
+          .thenRun(_ => RefreshTokenStored(cmd.data) ~> replyTo)
 
       case cmd: RemoveRefreshToken   =>
-        Effect.persist[E, Option[RefreshTokenState[T]]](RefreshTokenRemoved(cmd.selector))
-          .thenRun(maybeReply(replyTo, _ => RefreshTokenRemoved(cmd.selector))).thenStop()
+        Effect.persist[RefreshTokenEvent, Option[RefreshTokenState[T]]](RefreshTokenRemoved(cmd.selector))
+          .thenRun(_ => RefreshTokenRemoved(cmd.selector) ~> replyTo).thenStop()
 
       case cmd: LookupRefreshToken   =>
-        Effect.none.thenRun(
-          maybeReply(
-            replyTo,
-            _ => LookupRefreshTokenResult(
-              state.map((s) => RefreshTokenLookupResult(
-                s.data.tokenHash,
-                s.data.expires,
-                () => s.data.forSession
-              ))
-            )
-          )
+        Effect.none.thenRun(_ =>           
+          LookupRefreshTokenResult(
+            state.map((s) => RefreshTokenLookupResult(
+              s.data.tokenHash,
+              s.data.expires,
+              () => s.data.forSession
+            ))
+          ) ~> replyTo
         )
 
       case _ => super.handleCommand(entityId, state, command, replyTo, self)
@@ -93,7 +82,7 @@ trait RefreshTokenBehavior[
     */
   override def handleEvent(
                             state: Option[RefreshTokenState[T]],
-                            event: E
+                            event: RefreshTokenEvent
                           )(implicit system: ActorSystem[_],
                             log: Logger,
                             m: Manifest[RefreshTokenState[T]]
@@ -107,15 +96,7 @@ trait RefreshTokenBehavior[
 
 }
 
-trait SessionRefreshTokenBehavior extends RefreshTokenBehavior[
-  Session,
-  RefreshTokenCommand,
-  RefreshTokenEvent,
-  RefreshTokenResult]{
-  override implicit def toR[U <: RefreshTokenResult](result: U): RefreshTokenResult = result
-
-  override implicit def toE[U <: RefreshTokenEvent](event: U): RefreshTokenEvent = event
-
+trait SessionRefreshTokenBehavior extends RefreshTokenBehavior[Session]{
   override val persistenceId = "Session"
 
 }

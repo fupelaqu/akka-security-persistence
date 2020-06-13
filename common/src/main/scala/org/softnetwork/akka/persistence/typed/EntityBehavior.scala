@@ -118,6 +118,19 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     */
   protected def subscribe(system: ActorSystem[_], subscriber: ActorRef[C])(implicit tTag: ClassTag[C]): Unit = {}
 
+  implicit def resultToMaybeReply(r: R): MaybeReply = new MaybeReply {
+    def apply() = {
+      case Some(subscriber) => subscriber ! r
+      case _ =>
+    }
+  }
+
+  sealed trait MaybeReply {
+    def apply(): Option[ActorRef[R]] => Unit
+    final def ~>(replyTo: Option[ActorRef[R]]): Unit = apply()(replyTo)
+  }
+
+  @deprecated
   final protected def maybeReply(replyTo: Option[ActorRef[R]], result: Option[S] => R)(implicit log: Logger
   ): Option[S] => Unit = { state =>
     replyTo match {
