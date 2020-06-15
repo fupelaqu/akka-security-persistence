@@ -1,11 +1,9 @@
 package org.softnetwork.akka.persistence.typed
 
-import akka.actor.typed.scaladsl.TimerScheduler
-import akka.actor.typed.{ActorSystem, ActorRef}
+import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler}
+import akka.actor.typed.ActorRef
 
 import akka.persistence.typed.scaladsl.Effect
-
-import org.slf4j.Logger
 
 import scala.language.implicitConversions
 
@@ -27,8 +25,7 @@ trait Sequence extends EntityBehavior[SequenceCommand, SequenceState, SequenceEv
                               state: Option[SequenceState],
                               command: SequenceCommand,
                               replyTo: Option[ActorRef[SequenceResult]],
-                              self: ActorRef[SequenceCommand])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[SequenceState], timers: TimerScheduler[SequenceCommand]
+                              timers: TimerScheduler[SequenceCommand])(implicit context: ActorContext[SequenceCommand]
   ): Effect[SequenceEvent, Option[SequenceState]] = {
     command match {
 
@@ -48,8 +45,8 @@ trait Sequence extends EntityBehavior[SequenceCommand, SequenceState, SequenceEv
     }
   }
 
-  override def handleEvent(state: Option[SequenceState], event: SequenceEvent)
-                          (implicit system: ActorSystem[_], log: Logger, m: Manifest[SequenceState]): Option[SequenceState] = {
+  override def handleEvent(state: Option[SequenceState], event: SequenceEvent)(
+    implicit context: ActorContext[SequenceCommand]): Option[SequenceState] = {
     event match {
       case e: SequenceIncremented => Some(SequenceState(e.name, e.value))
       case e: SequenceDecremented => Some(SequenceState(e.name, e.value))

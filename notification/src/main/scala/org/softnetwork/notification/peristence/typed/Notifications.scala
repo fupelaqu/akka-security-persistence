@@ -2,8 +2,8 @@ package org.softnetwork.notification.peristence.typed
 
 import java.util.Date
 
-import _root_.akka.actor.typed.scaladsl.TimerScheduler
-import akka.actor.typed.{ActorRef, ActorSystem}
+import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler}
+import akka.actor.typed.ActorRef
 
 import akka.persistence.typed.scaladsl.Effect
 
@@ -45,9 +45,9 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
                               state: Option[T],
                               command: NotificationCommand,
                               replyTo: Option[ActorRef[NotificationCommandResult]],
-                              self: ActorRef[NotificationCommand])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[T], timers: TimerScheduler[NotificationCommand]
-  ): Effect[NotificationEvent, Option[T]] = {
+                              timers: TimerScheduler[NotificationCommand])(
+    implicit context: ActorContext[NotificationCommand]): Effect[NotificationEvent, Option[T]] = {
+    implicit val log = context.log
     command match {
 
       case cmd: AddNotification[T] =>
@@ -124,7 +124,7 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           case _ => Effect.none
         }
 
-      case _ => super.handleCommand(entityId, state, command, replyTo, self)
+      case _ => super.handleCommand(entityId, state, command, replyTo, timers)
     }
   }
 
@@ -135,7 +135,8 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
     * @return new state
     */
   override def handleEvent(state: Option[T], event: NotificationEvent)(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[T]): Option[T] = {
+    implicit context: ActorContext[NotificationCommand]): Option[T] = {
+    import context._
     event match {
       case evt: NotificationRecordedEvent[T] =>
         log.info(s"Recorded $persistenceId ${evt.uuid}")

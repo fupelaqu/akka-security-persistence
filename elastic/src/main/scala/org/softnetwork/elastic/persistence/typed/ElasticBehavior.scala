@@ -1,6 +1,6 @@
 package org.softnetwork.elastic.persistence.typed
 
-import akka.actor.typed.scaladsl.TimerScheduler
+import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler}
 import akka.actor.typed.{ActorSystem, ActorRef}
 import org.softnetwork.ManifestWrapper
 import org.softnetwork.akka.message._
@@ -12,8 +12,6 @@ import akka.persistence.typed.scaladsl.Effect
 import com.typesafe.scalalogging.StrictLogging
 
 import io.searchbox.core.search.aggregation.RootAggregation
-
-import org.slf4j.Logger
 
 import org.softnetwork.akka.persistence.typed.EntityBehavior
 
@@ -62,18 +60,19 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
                               state: Option[S],
                               command: ElasticCommand,
                               replyTo: Option[ActorRef[ElasticResult]],
-                              self: ActorRef[ElasticCommand])(
-                              implicit system: ActorSystem[_], log: Logger, m: Manifest[S], timers: TimerScheduler[ElasticCommand]
-                            ): Effect[ElasticEvent, Option[S]] = {
+                              timers: TimerScheduler[ElasticCommand])(implicit context: ActorContext[ElasticCommand]
+  ): Effect[ElasticEvent, Option[S]] = {
     command match {
 
       case cmd: CreateDocument[S] =>
         import cmd._
+        implicit val m = manifestWrapper.wrapped
         Effect.persist[ElasticEvent, Option[S]](DocumentCreatedEvent(document))
           .thenRun(state => DocumentCreated(document.uuid) ~> replyTo)
 
       case cmd: UpdateDocument[S] =>
         import cmd._
+        implicit val m = manifestWrapper.wrapped
         Effect.persist[ElasticEvent, Option[S]](DocumentUpdatedEvent(document, upsert))
           .thenRun(state => DocumentUpdated(document.uuid) ~> replyTo)
 
@@ -92,12 +91,14 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
           .thenRun(state => DocumentDeleted ~> replyTo).thenStop()
 
       case cmd: LoadDocument =>
+        implicit val m = manifestWrapper.wrapped
         state match {
           case Some(s) => Effect.none.thenRun(state => DocumentLoaded(s) ~> replyTo)
           case _       => Effect.none.thenRun(state => DocumentNotFound ~> replyTo)
         }
 
       case cmd: LoadDocumentAsync =>
+        implicit val m = manifestWrapper.wrapped
         state match {
           case Some(s) => Effect.none.thenRun(state => DocumentLoaded(s) ~> replyTo)
           case _       => Effect.none.thenRun(state => DocumentNotFound ~> replyTo)
@@ -106,6 +107,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
       case cmd: LookupDocuments =>
         import cmd._
         implicit val jestClient = apply()
+        implicit val m = manifestWrapper.wrapped
         Try(getAll[S](sqlQuery)) match {
           case Success(documents) =>
             documents match {
@@ -113,7 +115,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
               case _   => Effect.none.thenRun(state => DocumentsFound[S](documents) ~> replyTo)
             }
           case Failure(f) =>
-            log.error(f.getMessage, f)
+            context.log.error(f.getMessage, f)
             jestClient.close()
             Effect.none.thenRun(state => NoResultsFound ~> replyTo)
         }
@@ -121,7 +123,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
       case cmd: Count =>
         import cmd._
         implicit val jestClient = apply()
-        implicit val ec = system.executionContext
+        implicit val ec = context.system.executionContext
         val futures = for (elasticCount <- ElasticQuery.count(query)) yield {
           val promise: Promise[CountResponse] = Promise()
           import collection.immutable.Seq
@@ -199,7 +201,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
             idKey = Some("uuid"),
             update = Some(true),
             delete = Some(false)
-          )(bulkOptions, system)
+          )(bulkOptions, context.system)
         ) match {
           case Success(_) => Effect.none.thenRun(state => DocumentsBulkUpdated ~> replyTo)
           case Failure(f) =>
@@ -218,7 +220,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
             idKey = Some("uuid"),
             update = Some(false),
             delete = Some(true)
-          )(bulkOptions, system)
+          )(bulkOptions, context.system)
         ) match {
           case Success(_) => Effect.none.thenRun(state => DocumentsBulkDeleted ~> replyTo)
           case Failure(f) =>
@@ -255,7 +257,7 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
     * @return new state
     */
   override def handleEvent(state: Option[S], event: ElasticEvent)(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[S]): Option[S] = {
+    implicit context: ActorContext[ElasticCommand]): Option[S] = {
     event match {
       case evt: CrudEvent => handleElasticCrudEvent(state, evt)
       case _ => super.handleEvent(state, event)
@@ -269,7 +271,8 @@ trait ElasticBehavior[S  <: Timestamped] extends EntityBehavior[ElasticCommand, 
     * @return new state
     */
   private[this] def handleElasticCrudEvent(state: Option[S], event: CrudEvent)(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[S]): Option[S] = {
+    implicit context: ActorContext[ElasticCommand]): Option[S] = {
+    implicit val m = manifestWrapper.wrapped
     event match {
       case e: Created[S] =>
         import e._

@@ -2,7 +2,7 @@ package org.softnetwork.security.persistence.typed
 
 import java.util.Date
 
-import akka.actor.typed.scaladsl.TimerScheduler
+import _root_.akka.actor.typed.scaladsl.{ActorContext, TimerScheduler}
 
 import akka.actor.typed.{ActorRef, ActorSystem}
 
@@ -399,9 +399,10 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
                               state: Option[T],
                               command: AccountCommand,
                               replyTo: Option[ActorRef[AccountCommandResult]],
-                              self: ActorRef[AccountCommand])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[T], timers: TimerScheduler[AccountCommand]
+                              timers: TimerScheduler[AccountCommand])(implicit context: ActorContext[AccountCommand]
   ): Effect[AccountEvent, Option[T]] = {
+    implicit val log = context.log
+    implicit val system = context.system
     command match {
 
       case cmd: InitAdminAccount =>
@@ -874,7 +875,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
         }
 
       /** no handlers **/
-      case _ => super.handleCommand(entityId, state, command, replyTo, self)
+      case _ => super.handleCommand(entityId, state, command, replyTo, timers)
 
     }
   }
@@ -886,8 +887,7 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
     * @return new state
     */
   override def handleEvent(state: Option[T], event: AccountEvent)(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[T]
-  ): Option[T] = {
+    implicit context: ActorContext[AccountCommand]): Option[T] = {
     event match {
       case evt: AccountCreatedEvent[_] =>
         val account = evt.document
@@ -1066,9 +1066,8 @@ trait AccountKeyBehavior extends EntityBehavior[
                               state: Option[AccountKeyState],
                               command: AccountKeyCommand,
                               replyTo: Option[ActorRef[AccountKeyCommandResult]],
-                              self: ActorRef[AccountKeyCommand])(
-                              implicit system: ActorSystem[_], log: Logger, m: Manifest[AccountKeyState],
-                              timers: TimerScheduler[AccountKeyCommand]
+                              timers: TimerScheduler[AccountKeyCommand])(
+                              implicit context: ActorContext[AccountKeyCommand]
   ): Effect[AccountEvent, Option[AccountKeyState]] = {
     command match {
 
@@ -1094,7 +1093,7 @@ trait AccountKeyBehavior extends EntityBehavior[
           case _       => Effect.none.thenRun(_ => AccountKeyNotFound ~> replyTo)
         }
 
-      case _ => super.handleCommand(entityId, state, command, replyTo, self)
+      case _ => super.handleCommand(entityId, state, command, replyTo, timers)
     }
   }
 
@@ -1105,11 +1104,11 @@ trait AccountKeyBehavior extends EntityBehavior[
     * @return new state
     */
   override def handleEvent(state: Option[AccountKeyState], event: AccountEvent)(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[AccountKeyState]): Option[AccountKeyState] = {
+    implicit context: ActorContext[AccountKeyCommand]): Option[AccountKeyState] = {
     event match {
       case e: AccountKeyAdded => Some(AccountKeyState(e.uuid, e.account))
-      case _: AccountKeyRemoved  => emptyState
-      case _                  => super.handleEvent(state, event)
+      case _: AccountKeyRemoved => emptyState
+      case _ => super.handleEvent(state, event)
     }
   }
 }

@@ -3,7 +3,7 @@ package org.softnetwork.akka.persistence.typed
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
-import akka.actor.typed.scaladsl.{TimerScheduler, Behaviors}
+import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler, Behaviors}
 import akka.actor.typed.{ActorSystem, SupervisorStrategy, Behavior, ActorRef}
 
 import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityTypeKey}
@@ -16,8 +16,6 @@ import org.softnetwork.akka.model._
 import org.softnetwork.akka.persistence.PersistenceTools
 
 import scala.concurrent.duration._
-
-import org.slf4j.Logger
 
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
@@ -72,6 +70,7 @@ trait CommandTypeKey[C <: Command] {
 
 trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] extends CommandTypeKey[C] {
   type W = CommandWrapper[C, R] with C
+  type WR = CommandWithReply[R] with C
   /** number of events received before generating a snapshot - should be configurable **/
   def snapshotInterval: Int = 100
 
@@ -142,15 +141,15 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
           commandHandler = { (state, command) =>
             context.log.debug(s"handling command $command for ${TypeKey.name} $entityId")
             command match {
-              case w: W => handleCommand(entityId, state, w.command, Some(w.replyTo), context.self)(
-                context.system, context.log, m, timers)
-              case c: C => handleCommand(entityId, state, c, None, context.self)(context.system, context.log, m, timers)
+              case w: W => handleCommand(entityId, state, w.command, Some(w.replyTo), timers)(context)
+              case wr: WR => handleCommand(entityId, state, wr, Some(wr.replyTo), timers)(context)
+              case c: C => handleCommand(entityId, state, c, None, timers)(context)
               case _ => Effect.unhandled
             }
           },
           eventHandler = { (state, event) =>
             context.log.debug(s"handling event $event for ${TypeKey.name} $entityId")
-            handleEvent(state, event)(context.system, context.log, m)
+            handleEvent(state, event)(context)
           }
         )
           .onPersistFailure(
@@ -187,10 +186,11 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     * @param state - current state
     * @param command - command to handle
     * @param replyTo - optional actor to reply to
+    * @param timers - scheduled messages associated with this entity behavior
     * @return effect
     */
-  def handleCommand(entityId: String, state: Option[S], command: C, replyTo: Option[ActorRef[R]], self: ActorRef[C])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[S], timers: TimerScheduler[C]): Effect[E, Option[S]] =
+  def handleCommand(entityId: String, state: Option[S], command: C, replyTo: Option[ActorRef[R]], timers: TimerScheduler[C])(
+    implicit context: ActorContext[C]): Effect[E, Option[S]] =
     command match {
       case _    => Effect.unhandled
     }
@@ -201,7 +201,7 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     * @param event - event to hanlde
     * @return new state
     */
-  def handleEvent(state: Option[S], event: E)(implicit system: ActorSystem[_], log: Logger, m: Manifest[S]): Option[S] =
+  def handleEvent(state: Option[S], event: E)(implicit context: ActorContext[C]): Option[S] =
     event match {
       case _  => state
     }

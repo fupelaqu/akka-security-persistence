@@ -1,13 +1,11 @@
 package org.softnetwork.session.persistence.typed
 
-import akka.actor.typed.scaladsl.TimerScheduler
-import akka.actor.typed.{ActorSystem, ActorRef}
+import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler}
+import akka.actor.typed.ActorRef
 
 import akka.persistence.typed.scaladsl.Effect
 
 import com.softwaremill.session.{RefreshTokenLookupResult, RefreshTokenData}
-
-import org.slf4j.Logger
 
 import org.softnetwork.akka.model.State
 
@@ -46,9 +44,8 @@ trait RefreshTokenBehavior[T]
                               state: Option[RefreshTokenState[T]],
                               command: RefreshTokenCommand,
                               replyTo: Option[ActorRef[RefreshTokenResult]],
-                              self: ActorRef[RefreshTokenCommand])(
-    implicit system: ActorSystem[_], log: Logger, m: Manifest[RefreshTokenState[T]], timers: TimerScheduler[RefreshTokenCommand]
-  ): Effect[RefreshTokenEvent, Option[RefreshTokenState[T]]] = {
+                              timers: TimerScheduler[RefreshTokenCommand])(
+    implicit context: ActorContext[RefreshTokenCommand]): Effect[RefreshTokenEvent, Option[RefreshTokenState[T]]] = {
     command match {
 
       case cmd: StoreRefreshToken[T] =>
@@ -70,7 +67,7 @@ trait RefreshTokenBehavior[T]
           ) ~> replyTo
         )
 
-      case _ => super.handleCommand(entityId, state, command, replyTo, self)
+      case _ => super.handleCommand(entityId, state, command, replyTo, timers)
     }
   }
 
@@ -80,13 +77,8 @@ trait RefreshTokenBehavior[T]
     * @param event - event to hanlde
     * @return new state
     */
-  override def handleEvent(
-                            state: Option[RefreshTokenState[T]],
-                            event: RefreshTokenEvent
-                          )(implicit system: ActorSystem[_],
-                            log: Logger,
-                            m: Manifest[RefreshTokenState[T]]
-  ): Option[RefreshTokenState[T]] = {
+  override def handleEvent(state: Option[RefreshTokenState[T]], event: RefreshTokenEvent)(
+    implicit context: ActorContext[RefreshTokenCommand]): Option[RefreshTokenState[T]] = {
     event match {
       case e: RefreshTokenStored[T] => Some(RefreshTokenState(e.data))
       case _: RefreshTokenRemoved   => emptyState
