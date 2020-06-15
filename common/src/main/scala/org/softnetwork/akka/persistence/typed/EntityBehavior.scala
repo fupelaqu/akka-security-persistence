@@ -130,17 +130,6 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     final def ~>(replyTo: Option[ActorRef[R]]): Unit = apply()(replyTo)
   }
 
-  @deprecated
-  final protected def maybeReply(replyTo: Option[ActorRef[R]], result: Option[S] => R)(implicit log: Logger
-  ): Option[S] => Unit = { state =>
-    replyTo match {
-      case Some(subscriber) =>
-        log.debug(s"replying $result to $subscriber")
-        subscriber ! result(state)
-      case _                => log.debug(s"no reply for $result")
-    }
-  }
-
   final def apply(entityId: String, persistenceId: PersistenceId)(
     implicit tTag: ClassTag[C], m: Manifest[S]): Behavior[C] = {
     Behaviors.withTimers((timers) => { schedules.foreach((schedule) => schedule.timer(timers))
