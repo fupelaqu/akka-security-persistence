@@ -1,8 +1,5 @@
 package org.softnetwork.akka.persistence.typed
 
-import java.time.LocalDateTime
-import java.time.temporal.ChronoUnit
-
 import akka.actor.typed.scaladsl.{ActorContext, TimerScheduler, Behaviors}
 import akka.actor.typed.{ActorSystem, SupervisorStrategy, Behavior, ActorRef}
 
@@ -20,57 +17,20 @@ import scala.concurrent.duration._
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 
-import com.markatta.akron.CronExpression
-
 /**
   * Created by smanciot on 16/05/2020.
   */
-sealed trait Schedule[C <: Command] {
-  def key: Any
-  def command: C
-  def delay: FiniteDuration
-  def once: Boolean = false
-  def timer : TimerScheduler[C] => Unit
-}
-
-@SerialVersionUID(0L)
-abstract class CronTabCommand(val key: Any, val cronExpression: CronExpression) extends Command {
-  def next(): FiniteDuration = {
-    val now = LocalDateTime.now()
-    val next = cronExpression.nextTriggerTime(now) match {
-      case Some(ldt) => ldt
-      case _ => LocalDateTime.now()
-    }
-    val diff = now.until(next, ChronoUnit.SECONDS)
-    if(diff < 0){
-      (60 - Math.abs(diff)).seconds
-    }
-    else{
-      diff.seconds
-    }
-  }
-}
-
-@SerialVersionUID(0L)
-case class CommandSchedule[C <: Command](key: Any, command: C, delay: FiniteDuration, override val once: Boolean = false)
-  extends Schedule[C] {
-  override def timer : TimerScheduler[C] => Unit = timers => {
-    if(once){
-      timers.startSingleTimer(key, command, delay)
-    }
-    else{
-      timers.startTimerWithFixedDelay(key, command, delay)
-    }
-  }
-}
-
 trait CommandTypeKey[C <: Command] {
   def TypeKey(implicit tTag: ClassTag[C]): EntityTypeKey[C]
 }
 
 trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] extends CommandTypeKey[C] {
   type W = CommandWrapper[C, R] with C
+
   type WR = CommandWithReply[R] with C
+
+  type CT = CronTabCommand with C
+
   /** number of events received before generating a snapshot - should be configurable **/
   def snapshotInterval: Int = 100
 
@@ -143,6 +103,10 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
             command match {
               case w: W => handleCommand(entityId, state, w.command, Some(w.replyTo), timers)(context)
               case wr: WR => handleCommand(entityId, state, wr, Some(wr.replyTo), timers)(context)
+              case ct: CT =>
+                val effect = handleCommand(entityId, state, ct, None, timers)(context)
+                implicitly[Schedule[C]](ct).timer(timers)
+                effect
               case c: C => handleCommand(entityId, state, c, None, timers)(context)
               case _ => Effect.unhandled
             }
@@ -206,5 +170,3 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
       case _  => state
     }
 }
-
-trait EntityActor[C <: EntityCommand, S <: State, E <: Event, R <: CommandResult] extends EntityBehavior[C, S, E, R]

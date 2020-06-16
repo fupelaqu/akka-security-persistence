@@ -11,7 +11,7 @@ package object message {
   sealed trait NotificationCommand extends EntityCommand
 
   @SerialVersionUID(0L)
-  case class NotificationTimeout() extends NotificationCommand with AllEntities
+  case object NotificationTimeout extends NotificationCommand with AllEntities
 
   @SerialVersionUID(0L)
   case class AddNotification[T<:Notification](notification: T) extends NotificationCommand {

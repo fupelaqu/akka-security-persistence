@@ -9,7 +9,7 @@ import akka.persistence.typed.scaladsl.Effect
 
 import org.slf4j.Logger
 
-import org.softnetwork.akka.persistence.typed.{CommandSchedule, EntityBehavior}
+import org.softnetwork.akka.persistence.typed.{Schedule, EntityBehavior}
 
 import org.softnetwork.notification.handlers._
 
@@ -31,7 +31,14 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
 
   private case object NotificationTimerKey
 
-  override protected val schedules = Seq(CommandSchedule(NotificationTimerKey, NotificationTimeout(), 1.minute))
+  override protected val schedules =
+    Seq(
+      Schedule(
+        NotificationTimerKey,
+        NotificationTimeout,
+        Some(1.minute)
+      )
+    )
 
   /**
     *
@@ -98,7 +105,7 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           case _ => Effect.none.thenRun(_ => NotificationNotFound ~> replyTo)
         }
 
-      case _: NotificationTimeout =>
+      case NotificationTimeout =>
         state match {
           case Some(s) =>
             import s._
