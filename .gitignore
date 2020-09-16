@@ -1,0 +1,9 @@
+.idea
+*.iml
+./src
+target
+old
+.vagrant
+*.pyc
+devops
+registry

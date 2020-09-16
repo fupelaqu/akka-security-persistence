@@ -1,0 +1,134 @@
+syntax = "proto2";
+
+import "scalapb/scalapb.proto";
+import "google/protobuf/timestamp.proto";
+import "model/security.proto";
+
+package org.softnetwork.security.message;
+
+option (scalapb.options) = {
+    single_file: true
+    flat_package: true
+    import: "org.softnetwork.akka.message._"
+    import: "org.softnetwork.akka.serialization._"
+    import: "org.softnetwork.security.message._"
+    import: "org.softnetwork.security.model._"
+    import: "org.softnetwork.security.serialization._"
+    import: "Protobuf._"
+    preamble: "trait AccountEvent extends Event"
+    preamble: "sealed trait DeviceEvent extends AccountEvent"
+    preamble: "trait AccountCreatedEvent[T <: Account] extends Created[T] with AccountEvent"
+    preamble: "trait ProfileUpdatedEvent[T <: Profile] extends AccountEvent {def uuid: String; def profile: T}"
+};
+
+message DeviceRegisteredEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required org.softnetwork.security.model.DeviceRegistration registration = 2;
+}
+
+message DeviceUnregisteredEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required org.softnetwork.security.model.DeviceRegistration registration = 2;
+}
+
+message BasicAccountCreatedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountCreatedEvent[BasicAccount]";
+    required org.softnetwork.security.model.BasicAccount document = 1;
+}
+
+message AccountActivatedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+}
+
+message AccountDisabledEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required int32 nbLoginFailures = 2;
+}
+
+message AccountDeletedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+}
+
+message AccountDestroyedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    option (scalapb.message).extends = "Deleted";
+    required string uuid = 1;
+}
+
+message PasswordUpdatedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required string credentials = 2;
+    optional org.softnetwork.security.model.VerificationCode code = 3;
+    optional org.softnetwork.security.model.VerificationToken token = 4;
+}
+
+message LoginSucceeded {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required google.protobuf.Timestamp lastLogin = 2 [(scalapb.field).type = "java.util.Date"];
+}
+
+message LoginFailed {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required int32 nbLoginFailures = 2;
+}
+
+message VerificationTokenAdded {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required org.softnetwork.security.model.VerificationToken token = 2;
+}
+
+message VerificationCodeAdded {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required org.softnetwork.security.model.VerificationCode code = 2;
+}
+
+message ProfileSwitchedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    required string uuid = 1;
+    required string name = 2;
+}
+
+message BasicAccountProfileUpdatedEvent {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "ProfileUpdatedEvent[BasicAccountProfile]";
+    required string uuid = 1;
+    required org.softnetwork.security.model.BasicAccountProfile profile = 2;
+}
+
+message AccountKeyAdded {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    option (scalapb.message).extends = "AccountKeyCommandResult";
+    required string uuid = 1;
+    required string account = 2;
+}
+
+message AccountKeyRemoved {
+    option (scalapb.message).extends = "ProtobufEvent";
+    option (scalapb.message).extends = "AccountEvent";
+    option (scalapb.message).extends = "AccountKeyCommandResult";
+    required string uuid = 1;
+}
