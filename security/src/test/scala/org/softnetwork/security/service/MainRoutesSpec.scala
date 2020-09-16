@@ -220,8 +220,13 @@ class MainRoutesSpec extends AnyWordSpecLike with PersistenceTypedRouteTestKit w
   }
 
   "SendVerificationCode" should {
-    "work" in {
+    "work with email" in {
       Post(s"/api/${Settings.Path}/verificationCode", SendVerificationCode(email)) ~> mainRoutes.routes ~> check {
+        status shouldEqual StatusCodes.OK
+      }
+    }
+    "work with gsm" in {
+      Post(s"/api/${Settings.Path}/verificationCode", SendVerificationCode(gsm)) ~> mainRoutes.routes ~> check {
         status shouldEqual StatusCodes.OK
       }
     }

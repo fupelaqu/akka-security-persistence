@@ -18,7 +18,10 @@ trait NotificationProvider[T<:Notification] {
 trait MockNotificationProvider[T<:Notification] extends NotificationProvider[T] with StrictLogging {
 
   override def send(notification: T): NotificationAck = {
-    logger.info(s"\r\n${notification.message}")
+    notification match {
+      case m: Mail => logger.info(s"\r\n${m.richMessage}")
+      case _ => logger.info(s"\r\n${notification.message}")
+    }
     NotificationAck(
       Some(UUID.randomUUID().toString),
       notification.to.map((recipient) => NotificationStatusResult(recipient, NotificationStatus.Sent, None)),

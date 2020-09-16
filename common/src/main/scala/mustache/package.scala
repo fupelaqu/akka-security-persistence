@@ -12,6 +12,7 @@ package mustache {
   import java.io.{File => JFile}
 
   import com.typesafe.config.{ConfigFactory, Config}
+  import org.apache.commons.text.StringEscapeUtils
 
   case class MustacheParseException(line:Int, msg:String)
     extends Exception("Line "+line+": "+msg)
@@ -95,6 +96,27 @@ package mustache {
               })
           }) : _*
       )
+    }
+
+    def renderHtml4(
+                context : Any = null
+                , partials : Map[String,Mustache] = Map()
+                , callstack : List[Any] = List(this)
+              ) : String = {
+      context match {
+        case m: Map[String, Any] =>
+          product(
+            m.map((kv) =>
+               kv._2 match {
+                case s: String => kv._1 -> StringEscapeUtils.escapeHtml4(s)
+                case v => kv._1 -> v
+              }
+            ),
+            partials,
+            callstack
+          ).toString
+        case _ => product(context, partials, callstack).toString
+      }
     }
 
     def render(
@@ -610,6 +632,14 @@ package mustache {
       with ValuesFormatter {
     private val source = otag + key + ctag
 
+    val transcode: Map[Char, String] = Map.empty
+//      Map(
+//        '<' -> "&lt;",
+//        '>' -> "&gt;",
+//        '"' -> "&quot;",
+//        '&' -> "&amp;"
+//      )
+
     def render(context:Any
                , partials:Map[String,Mustache]
                , callstack:List[Any]):TokenProduct = {
@@ -618,10 +648,7 @@ package mustache {
         val maxLength = (v.length*1.2).toInt
         def write(out:StringBuilder):Unit =
           v.foreach {
-            case '<' => out.append("&lt;")
-            case '>' => out.append("&gt;")
-            case '&' => out.append("&amp;")
-            case '"' => out.append("&quot;")
+            case t if transcode.contains(t) => out.append(transcode.get(t))
             case c => out.append(c)
           }
       }

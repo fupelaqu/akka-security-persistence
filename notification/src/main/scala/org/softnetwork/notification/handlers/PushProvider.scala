@@ -9,19 +9,21 @@ import javapns.notification.{PushedNotification, Payload, PushNotificationBigPay
 
 import com.google.android.gcm.server.{Result, Sender, Notification, Message}
 import com.google.android.gcm.server.Message.Builder
+import com.typesafe.scalalogging.StrictLogging
 
 import org.softnetwork.notification.config.Settings
 import org.softnetwork.notification.config.Settings.PushConfig
-import org.softnetwork.notification.model.{BasicDevice => Device, _}
+import org.softnetwork.notification.model._
 
 import scala.annotation.tailrec
 import scala.language.implicitConversions
 import scala.collection.JavaConversions._
+import scala.util.{Try, Success, Failure}
 
 /**
   * Created by smanciot on 14/04/2018.
   */
-trait PushProvider extends NotificationProvider[Push] {
+trait PushProvider extends NotificationProvider[Push] with StrictLogging {
 
   val maxDevices = 1000
 
@@ -35,34 +37,48 @@ trait PushProvider extends NotificationProvider[Push] {
     import GCMPushProvider._
 
     // send notification to devices per platform
-    NotificationAck(None, apns(notification, ios) ++ gcm(notification, android), new Date())
+    NotificationAck(
+      None,
+      apns(notification, ios.map(_.regId).distinct)
+        ++ gcm(notification, android.map(_.regId)).distinct
+      ,
+      new Date()
+    )
   }
 
   @tailrec
   private def apns(
                     payload: Payload,
-                    devices: Seq[Device],
+                    devices: Seq[String],
                     status: Seq[NotificationStatusResult] = Seq.empty
                   ): Seq[NotificationStatusResult] = {
     import APNSPushProvider._
     import pushConfig.apns._
     val nbDevices: Int = devices.length
     if(nbDevices > 0){
-      val results = ApnsPush.payload(
-        payload,
-        _keystore(keystore.path),
-        keystore.password,
-        dryRun,
-        new JArrayList[BasicDevice](
-          asJavaCollection((
-            if(nbDevices > maxDevices)
-              devices.take(maxDevices)
-            else
-              devices
-            ).map(deviceToApnsBasicDevice)
-          )
-        )
-      ).map(pushedNotificationToNotificationStatusResult)
+      val tos =
+        if(nbDevices > maxDevices)
+          devices.take(maxDevices)
+        else
+          devices
+      val results =
+        Try(
+          ApnsPush.payload(
+            payload,
+            _keystore(keystore.path),
+            keystore.password,
+            !dryRun,
+            new JArrayList[BasicDevice](
+              asJavaCollection(tos.map(deviceToApnsBasicDevice)
+              )
+            )
+          ).map(pushedNotificationToNotificationStatusResult)
+        ) match {
+          case Success(s) => s
+          case Failure(f) =>
+            logger.error(f.getMessage, f)
+            tos.map(to => NotificationStatusResult(to, NotificationStatus.Undelivered, Some(f.getMessage)))
+        }
       if(nbDevices > maxDevices){
         apns(payload, devices.drop(maxDevices), status ++ results)
       }
@@ -78,27 +94,31 @@ trait PushProvider extends NotificationProvider[Push] {
   @tailrec
   private def gcm(
                    payload: Message,
-                   devices: Seq[Device],
+                   devices: Seq[String],
                    status: Seq[NotificationStatusResult] = Seq.empty
                  ): Seq[NotificationStatusResult] = {
     import GCMPushProvider._
     val nbDevices: Int = devices.length
     if(nbDevices > 0){
-      val results = new Sender(
-        pushConfig.gcm.apiKey
-      )
-        .sendNoRetry(
-          payload,
-          new JArrayList[String](
-            asJavaCollection((
-              if(nbDevices > maxDevices)
-                devices.take(maxDevices)
-              else
-                devices
-              ).map(_.regId)
-            )
-          )
-        ).getResults.map(resultToNotificationStatusResult)
+      val tos =
+        if(nbDevices > maxDevices)
+          devices.take(maxDevices)
+        else
+          devices
+      val results =
+        Try(
+          new Sender(
+            pushConfig.gcm.apiKey
+          ).sendNoRetry(
+            payload,
+            new JArrayList[String](asJavaCollection(tos))
+          ).getResults.map(resultToNotificationStatusResult)
+        ) match {
+          case Success(s) => s
+          case Failure(f) =>
+            logger.error(f.getMessage, f)
+            tos.map(to => NotificationStatusResult(to, NotificationStatus.Undelivered, Some(f.getMessage)))
+        }
       if(nbDevices > maxDevices){
         gcm(payload, devices.drop(maxDevices), status ++ results)
       }
@@ -154,12 +174,12 @@ object APNSPushProvider {
     if(notification.badge > 0){
       payload.addBadge(notification.badge)
     }
-    notification.sound.foreach(payload.addSound)
+    payload.addSound(notification.sound.getOrElse("default"))
     payload.addCustomDictionary("id", notification.id)
     payload
   }
 
-  implicit def deviceToApnsBasicDevice(device: Device): BasicDevice = new BasicDevice(device.regId, true)
+  implicit def deviceToApnsBasicDevice(regId: String): BasicDevice = new BasicDevice(regId, true)
 
   implicit def pushedNotificationToNotificationStatusResult(result: PushedNotification): NotificationStatusResult = {
     val ex = Option(result.getException)

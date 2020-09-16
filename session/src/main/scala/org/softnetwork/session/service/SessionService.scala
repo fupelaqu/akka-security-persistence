@@ -24,4 +24,5 @@ trait SessionService {
 
   protected def _invalidateSession(implicit ec: ExecutionContext) = invalidateSession(refreshable, usingCookies)
 
+  protected def _optionalSession(implicit ec: ExecutionContext) = optionalSession(refreshable, usingCookies)
 }

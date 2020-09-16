@@ -15,6 +15,7 @@ import akka.stream.{KillSwitches, SharedKillSwitch, Materializer}
 import com.typesafe.scalalogging.{Logger, StrictLogging}
 
 import org.softnetwork.akka.message.Event
+import org.softnetwork.akka.persistence.PersistenceTools
 
 import org.softnetwork.akka.persistence.typed._
 
@@ -34,7 +35,7 @@ object EventProcessor {
       eventProcessorStream.runQueryStream(killSwitch)
       Behaviors.receiveSignal[Nothing] {
         case (_, PostStop) =>
-          ctx.log.info(s"Stopping stream ${eventProcessorStream.eventProcessorId} for tag [${eventProcessorStream.tag}] ")
+          ctx.log.info(s"Stopping stream ${eventProcessorStream.id}")
           killSwitch.shutdown()
           Behaviors.same
       }
@@ -43,13 +44,21 @@ object EventProcessor {
 
 }
 
-trait JournalProvider extends ReadJournal {
+trait EventStream {
+
+  def tag: String
+
+  def eventProcessorId: String = tag
+
+}
+
+trait JournalProvider extends ReadJournal with EventStream {
 
   implicit def classicSystem: classic.ActorSystem
 
-  def eventProcessorId: String
+  protected final lazy val platformEventProcessorId: String = s"$eventProcessorId-${PersistenceTools.env}"
 
-  def tag: String
+  protected final lazy val platformTag: String = s"$tag-${PersistenceTools.env}"
 
   protected def logger: Logger
 
@@ -82,7 +91,7 @@ trait JournalProvider extends ReadJournal {
 
 }
 
-trait EventProcessorStream[E <: Event] extends StrictLogging { _: JournalProvider =>
+trait EventProcessorStream[E <: Event] extends EventStream with StrictLogging { _: JournalProvider =>
 
   implicit def system: ActorSystem[_]
 
@@ -92,11 +101,9 @@ trait EventProcessorStream[E <: Event] extends StrictLogging { _: JournalProvide
 
   implicit def mat: Materializer = Materializer(classicSystem)
 
-  def eventProcessorId: String
-
-  def tag: String
-
   protected def init(): Unit = {}
+
+  final lazy val id = platformEventProcessorId
 
   /**
     *
@@ -109,16 +116,8 @@ trait EventProcessorStream[E <: Event] extends StrictLogging { _: JournalProvide
     */
   protected def processEvent(event: E, persistenceId: PersistenceId, sequenceNr: Long): Future[Done]
 
-  /**
-    *
-    * @param tag - tag
-    * @param offset - offset
-    * @return
-    */
-  protected def eventsByTag(tag: String, offset: Offset): Source[EventEnvelope, NotUsed]
-
   private[this] def processEventsByTag(offset: Offset): Source[Offset, NotUsed] = {
-    eventsByTag(tag, offset).mapAsync(1) { eventEnvelope =>
+    eventsByTag(platformTag, offset).mapAsync(1) { eventEnvelope =>
       eventEnvelope.event match {
         case event: E =>
           processEvent(
@@ -140,7 +139,7 @@ trait EventProcessorStream[E <: Event] extends StrictLogging { _: JournalProvide
         Source.futureSource {
           initJournalProvider()
           readOffset().map { offset =>
-            logger.info("Starting stream {} for tag [{}] from offset [{}]", eventProcessorId, tag, offset)
+            logger.info("Starting stream {} for tag [{}] from offset [{}]", platformEventProcessorId, platformTag, offset)
             processEventsByTag(offset)
               // groupedWithin can be used here to improve performance by reducing number of offset writes,
               // with the trade-off of possibility of more duplicate events when stream is restarted

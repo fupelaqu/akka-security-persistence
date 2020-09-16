@@ -1,6 +1,7 @@
 package org.softnetwork.notification
 
 import org.softnetwork.akka.message._
+import org.softnetwork.akka.model.Schedule
 import org.softnetwork.notification.model.Notification
 
 /**
@@ -32,6 +33,10 @@ package object message {
   @SerialVersionUID(0L)
   case class GetNotificationStatus(id: String) extends NotificationCommand
 
+  case class TriggerSchedule4Notification(schedule: Schedule) extends NotificationCommand {
+    override val id = schedule.entityId
+  }
+
   sealed trait NotificationCommandResult extends CommandResult
 
   @SerialVersionUID(0L)
@@ -48,6 +53,8 @@ package object message {
   @SerialVersionUID(0L)
   case class NotificationPending(uuid: String) extends NotificationCommandResult
 
+  case object Schedule4NotificationTriggered extends NotificationCommandResult
+
   @SerialVersionUID(0L)
   class NotificationErrorMessage (override val message: String) extends ErrorMessage(message) with NotificationCommandResult
 
@@ -62,4 +69,6 @@ package object message {
   case object NotificationMaxTriesReached extends NotificationErrorMessage("NotificationMaxTriesReached")
 
   case object NotificationUnknownCommand extends NotificationErrorMessage("NotificationUnknownCommand")
+
+  case object Schedule4NotificationNotTriggered extends NotificationErrorMessage("Schedule4NotificationNotTriggered")
 }

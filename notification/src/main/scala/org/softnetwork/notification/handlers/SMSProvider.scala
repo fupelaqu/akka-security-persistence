@@ -194,7 +194,6 @@ trait SMSModeProvider extends SMSProvider {
                       Some(uuid),
                       l.map(i => {
                         val result = i.trim.split("\\s+").toList
-                        val recipient = result.head
                         var providerStatus: Option[String] = None
                         val status =
                           Try(Status(result.last.toInt)) match {
@@ -223,7 +222,14 @@ trait SMSModeProvider extends SMSProvider {
                           case Undelivered => providerStatus
                           case _           => None
                         }
-                        NotificationStatusResult(recipient, status, error)
+                        NotificationStatusResult(
+                          if (result.size == 2)
+                            result.head
+                          else
+                            notification.to.head,
+                          status,
+                          error
+                        )
                       }),
                       new Date()
                     )

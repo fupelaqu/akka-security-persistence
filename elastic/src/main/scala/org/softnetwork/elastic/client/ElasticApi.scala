@@ -79,7 +79,7 @@ trait JestClientCompanion extends StrictLogging {
 
   private[this] lazy val elasticConfig: ElasticConfig = Settings.config.get
 
-  private[this] var jestClient: Option[JestClient] = None
+  private[this] var jestClient: Option[InnerJestClient] = None
 
   private[this] val factory = new JestClientFactory()
 
@@ -93,12 +93,11 @@ trait JestClientCompanion extends StrictLogging {
     }
 
     private def checkClient(): Unit = {
-      jestClient match {
+      Option(_jestClient) match {
         case None =>
           factory.setHttpClientConfig(httpClientConfig)
           _jestClient = Try(factory.getObject) match {
             case Success(s) =>
-              jestClient = Some(s)
               s
             case Failure(f) =>
               logger.error(f.getMessage, f)
@@ -167,8 +166,8 @@ trait JestClientCompanion extends StrictLogging {
     }
 
     override def close(): Unit = {
-      jestClient = None
       Option(_jestClient).foreach(_.close())
+      _jestClient = null
     }
   }
 

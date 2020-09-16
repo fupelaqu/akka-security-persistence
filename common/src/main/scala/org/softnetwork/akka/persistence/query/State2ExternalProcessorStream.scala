@@ -22,8 +22,6 @@ trait State2ExternalProcessorStream[T <: Timestamped, E <: CrudEvent] extends Ev
 
   lazy val tag: String = s"${getType[T](manifestWrapper.wrapped)}-to-$externalProcessor"
 
-  lazy val eventProcessorId: String = tag
-
   /**
     *
     * Processing event
@@ -39,27 +37,27 @@ trait State2ExternalProcessorStream[T <: Timestamped, E <: CrudEvent] extends Ev
       case evt: Created[_] =>
         import evt._
         if(!createDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
-          logger.error("document {} has not be created by {}", document.uuid, eventProcessorId)
+          logger.error("document {} has not be created by {}", document.uuid, platformEventProcessorId)
         }
 
       case evt: Updated[_] =>
         import evt._
         if(!updateDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
-          logger.error("document {} has not be updated by {}", document.uuid, eventProcessorId)
+          logger.error("document {} has not be updated by {}", document.uuid, platformEventProcessorId)
         }
 
       case evt: Deleted =>
         import evt._
         if(!deleteDocument(uuid)){
-          logger.error("document {} has not be deleted by {}", uuid, eventProcessorId)
+          logger.error("document {} has not be deleted by {}", uuid, platformEventProcessorId)
         }
 
       case evt: Upserted =>
         if(!upsertDocument(evt.uuid, evt.data)){
-          logger.error("document {} has not been upserted by {}", evt.uuid, eventProcessorId)
+          logger.error("document {} has not been upserted by {}", evt.uuid, platformEventProcessorId)
         }
 
-      case other => logger.warn("{} does not support event [{}]", eventProcessorId, other.getClass)
+      case other => logger.warn("{} does not support event [{}]", platformEventProcessorId, other.getClass)
     }
 
     Future.successful(Done)

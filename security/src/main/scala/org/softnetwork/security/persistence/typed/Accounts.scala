@@ -159,7 +159,8 @@ trait AccountNotifications[T <: Account] {
                                       deferred: Option[Date] = None)(
     implicit log: Logger, system: ActorSystem[_]): Boolean = {
     log.info(s"about to send notification to ${account.primaryPrincipal.value}\r\n$body")
-    channels.exists((channel) => sendNotificationByChannel(uuid, account, subject, body, channel, maxTries, deferred))
+    channels.map((channel) => sendNotificationByChannel(uuid, account, subject, body, channel, maxTries, deferred))
+      .exists(p => p)
   }
 
   def sendActivation(
@@ -241,7 +242,7 @@ trait AccountNotifications[T <: Account] {
       account,
       subject,
       body,
-      Seq(NotificationType.PUSH_TYPE, NotificationType.MAIL_TYPE, NotificationType.SMS_TYPE),
+      Seq(NotificationType.MAIL_TYPE, NotificationType.PUSH_TYPE, NotificationType.SMS_TYPE),
       maxTries,
       deferred
     )
@@ -776,20 +777,26 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
         * handle device registration
         */
       case cmd: RegisterDevice =>
-        Effect.persist[AccountEvent, Option[T]](
-          DeviceRegisteredEvent(
-            entityId,
-            cmd.registration
-          )
-        ).thenRun(_ => DeviceRegistered ~> replyTo)
+        import cmd._
+        state match {
+          case Some(account) if entityId == uuid =>
+            Effect.persist[AccountEvent, Option[T]](
+              DeviceRegisteredEvent(
+                entityId,
+                registration
+              )
+            ).thenRun(_ => DeviceRegistered ~> replyTo)
+          case _ => Effect.none.thenRun(_ => AccountNotFound ~> replyTo)
+        }
 
       /**
         * handle device unregistration
         */
       case cmd: UnregisterDevice =>
+        import cmd._
         state match {
-          case Some(account) =>
-            account.registrations.find(_.regId == cmd.regId) match {
+          case Some(account) if entityId == uuid =>
+            account.registrations.find(_.regId == regId) match {
               case Some(r) =>
                 Effect.persist[AccountEvent, Option[T]](
                   DeviceUnregisteredEvent(
@@ -953,7 +960,9 @@ trait AccountBehavior[T <: Account with AccountDecorator, P <: Profile]
         import evt._
         state.map(account =>
           account.copyWithRegistrations(
-            account.registrations.filterNot(_.regId == registration.regId).+:(registration)
+            account.registrations
+              .filterNot(_.deviceId.getOrElse("") == registration.deviceId.getOrElse(""))
+              .filterNot(_.regId == registration.regId).+:(registration)
           ).asInstanceOf[T]
         )
 

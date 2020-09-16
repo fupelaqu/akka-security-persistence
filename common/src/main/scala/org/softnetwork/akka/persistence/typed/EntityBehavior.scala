@@ -8,6 +8,8 @@ import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityType
 import akka.persistence.typed._
 import akka.persistence.typed.scaladsl.{Recovery, EventSourcedBehavior, Effect, RetentionCriteria}
 
+import org.softnetwork.akka.handlers.SchedulerDao
+
 import org.softnetwork.akka.message._
 import org.softnetwork.akka.model._
 import org.softnetwork.akka.persistence.PersistenceTools
@@ -31,8 +33,11 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
 
   type CT = CronTabCommand with C
 
+  /** a reference to the scheduler Dao **/
+  def schedulerDao: SchedulerDao = SchedulerDao
+
   /** number of events received before generating a snapshot - should be configurable **/
-  def snapshotInterval: Int = 100
+  def snapshotInterval: Int = 10
 
   def persistenceId: String
 
@@ -57,7 +62,7 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     *
     * @return scheduler(s) to sent messages repeatedly to the `self` actor with a fixed `delay` between messages.
     */
-  protected def schedules: Seq[Schedule[C]] = Seq.empty
+  protected def schedules: Seq[ScheduleCommand[C]] = Seq.empty
 
   /**
     *
@@ -68,6 +73,17 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
     * @return event tags
     */
   protected def tagEvent(entityId: String, event: E): Set[String] = Set.empty
+
+  /**
+    *
+    * Set platform event tags, which will be used in persistence query
+    *
+    * @param entityId - entity id
+    * @param event - the event to tag
+    * @return platform event tags
+    */
+  private[this] def platformTagEvent(entityId: String, event: E): Set[String] =
+    tagEvent(entityId, event).map(_ + s"-${PersistenceTools.env}")
 
   /**
     *
@@ -105,7 +121,7 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
               case wr: WR => handleCommand(entityId, state, wr, Some(wr.replyTo), timers)(context)
               case ct: CT =>
                 val effect = handleCommand(entityId, state, ct, None, timers)(context)
-                implicitly[Schedule[C]](ct).timer(timers)
+                implicitly[ScheduleCommand[C]](ct).timer(timers)
                 effect
               case c: C => handleCommand(entityId, state, c, None, timers)(context)
               case _ => Effect.unhandled
@@ -139,7 +155,7 @@ trait EntityBehavior[C <: Command, S <: State, E <: Event, R <: CommandResult] e
             case (state, _: DeleteSnapshotsFailed) => context.log.warn(s"Snapshot deletion failed for ${TypeKey.name} $entityId")
             case (state, _: DeleteEventsFailed) => context.log.warn(s"Events deletion failed for ${TypeKey.name} $entityId")
           }
-          .withTagger(event => tagEvent(entityId, event))
+          .withTagger(event => platformTagEvent(entityId, event))
       }
     })
   }

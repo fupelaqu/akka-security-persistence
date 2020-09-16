@@ -49,6 +49,7 @@ message DeviceRegistration {
     required string regId = 1;
     required org.softnetwork.notification.model.Platform platform = 2;
     optional string applicationId = 3;
+    optional string deviceId = 4;
 }
 
 message BasicAccountProfile {

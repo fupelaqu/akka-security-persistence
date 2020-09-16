@@ -40,12 +40,14 @@ trait State2ElasticProcessorStream[T <: Timestamped, E <: CrudEvent] extends Sta
     * @return
     */
   override protected def processEvent(event: E, persistenceId: PersistenceId, sequenceNr: Long): Future[Done] = {
+    var done = true
     event match {
 
       case evt: Created[_] =>
         import evt._
         if(!createDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
-          logger.error("document {} has not be created by {}", document.uuid, eventProcessorId)
+          logger.error("document {} has not be created by {}", document.uuid, platformEventProcessorId)
+          done = false
         }
         else if(forTests){
           system.eventStream.tell(Publish(DocumentCreated(document.uuid)))
@@ -54,7 +56,8 @@ trait State2ElasticProcessorStream[T <: Timestamped, E <: CrudEvent] extends Sta
       case evt: Updated[_] =>
         import evt._
         if(!updateDocument(document.asInstanceOf[T])(manifestWrapper.wrapped)){
-          logger.error("document {} has not be updated by {}", document.uuid, eventProcessorId)
+          logger.error("document {} has not be updated by {}", document.uuid, platformEventProcessorId)
+          done = false
         }
         else if(forTests){
           system.eventStream.tell(Publish(DocumentUpdated(document.uuid)))
@@ -63,7 +66,8 @@ trait State2ElasticProcessorStream[T <: Timestamped, E <: CrudEvent] extends Sta
       case evt: Deleted =>
         import evt._
         if(!deleteDocument(uuid)){
-          logger.error("document {} has not be deleted by {}", uuid, eventProcessorId)
+          logger.error("document {} has not be deleted by {}", uuid, platformEventProcessorId)
+          done = false
         }
         else if(forTests){
           system.eventStream.tell(Publish(DocumentDeleted(uuid)))
@@ -71,17 +75,27 @@ trait State2ElasticProcessorStream[T <: Timestamped, E <: CrudEvent] extends Sta
 
       case evt: Upserted =>
         if(!upsertDocument(evt.uuid, evt.data)){
-          logger.error("document {} has not been upserted by {}", evt.uuid, eventProcessorId)
+          logger.error("document {} has not been upserted by {}", evt.uuid, platformEventProcessorId)
+          done = false
         }
         else if(forTests){
           system.eventStream.tell(Publish(DocumentUpserted(evt.uuid)))
         }
 
-      case other => logger.warn("{} does not support event [{}]", eventProcessorId, other.getClass)
+      case other => logger.warn("{} does not support event [{}]", platformEventProcessorId, other.getClass)
 
     }
 
-    Future.successful(Done)
+    if(done){
+      Future.successful(Done)
+    }
+    else{
+      Future.failed(
+        new Exception(
+          s"event ${persistenceId.id} for sequence $sequenceNr could not be processed by $platformEventProcessorId"
+        )
+      )
+    }
   }
 }
 

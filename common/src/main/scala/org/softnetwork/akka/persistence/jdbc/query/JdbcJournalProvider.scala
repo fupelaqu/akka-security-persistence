@@ -6,6 +6,7 @@ import akka.persistence.jdbc.query.scaladsl.JdbcReadJournal
 import akka.persistence.query.{Sequence, PersistenceQuery, EventEnvelope, Offset}
 
 import akka.stream.scaladsl.Source
+import org.softnetwork.akka.persistence.jdbc.Settings
 import org.softnetwork.akka.persistence.jdbc.util.{Postgres, Db}
 
 import slick.jdbc.JdbcBackend.Session
@@ -21,9 +22,11 @@ import scala.util.{Try, Success, Failure}
   */
 trait JdbcJournalProvider extends JournalProvider { _: Db =>
 
-  def offsetSchema: String
+  import Settings._
 
-  def offsetTable: String = "event_processor_offsets"
+  lazy val offsetSchema: String = jdbcEventProcessorOffsets.schema
+
+  lazy val offsetTable: String = jdbcEventProcessorOffsets.table
 
   private[this] implicit lazy val session: Session = withDatabase(_.createSession())
 
@@ -73,8 +76,8 @@ trait JdbcJournalProvider extends JournalProvider { _: Db =>
       val statement = session.prepareStatement(
         s"SELECT sequence_number FROM $offsetSchema.$offsetTable WHERE event_processor_id=? AND tag=?"
       )
-      statement.setString(1, eventProcessorId)
-      statement.setString(2, tag)
+      statement.setString(1, platformEventProcessorId)
+      statement.setString(2, platformTag)
       val resultSet = statement.executeQuery()
       val sequenceNumber =
         if(resultSet.next()){
@@ -89,26 +92,26 @@ trait JdbcJournalProvider extends JournalProvider { _: Db =>
       case Success(sequenceNumber) =>
         sequenceNumber match {
           case Some(s) =>
-            logger.info(s"SELECT Offset ($eventProcessorId, $tag) -> $s")
+            logger.info(s"SELECT Offset ($platformEventProcessorId, $platformTag) -> $s")
             Future.successful(Offset.sequence(s))
           case _ =>
             Try{
               val statement = session.prepareStatement(
                s"INSERT INTO $offsetSchema.$offsetTable (event_processor_id, tag, sequence_number) VALUES(?, ?, 0)"
               )
-              statement.setString(1, eventProcessorId)
-              statement.setString(2, tag)
+              statement.setString(1, platformEventProcessorId)
+              statement.setString(2, platformTag)
               statement.executeUpdate()
             } match {
               case Success(s) =>
                 if(s != 1)
-                  logger.error(s"FAILED TO INSERT Offset ($eventProcessorId, $tag, 0) -> $s")
+                  logger.error(s"FAILED TO INSERT Offset ($platformEventProcessorId, $platformTag, 0) -> $s")
                 Future.successful(startOffset())
               case Failure(f) => Future.failed(f)
             }
         }
       case Failure(f) =>
-        logger.error(s"FAILED TO SELECT Offset ($eventProcessorId, $tag) -> ${f.getMessage}", f)
+        logger.error(s"FAILED TO SELECT Offset ($platformEventProcessorId, $platformTag) -> ${f.getMessage}", f)
         Future.failed(f)
     }
   }
@@ -122,20 +125,20 @@ trait JdbcJournalProvider extends JournalProvider { _: Db =>
   override protected def writeOffset(offset: Offset): Future[Done] = {
     offset match {
       case Sequence(value) =>
-        logger.info(s"UPDATING Offset ($eventProcessorId, $tag) -> $value")
+        logger.info(s"UPDATING Offset ($platformEventProcessorId, $platformTag) -> $value")
         Try{
           val statement =
               session.prepareStatement(
                 s"UPDATE $offsetSchema.$offsetTable set sequence_number=? WHERE event_processor_id=? AND tag=?"
               )
           statement.setLong(1, value)
-          statement.setString(2, eventProcessorId)
-          statement.setString(3, tag)
+          statement.setString(2, platformEventProcessorId)
+          statement.setString(3, platformTag)
           statement.executeUpdate()
         } match {
           case Success(s) =>
             if(s != 1)
-              logger.error(s"FAILED TO UPDATE Offset ($eventProcessorId, $tag, $value) -> $s")
+              logger.error(s"FAILED TO UPDATE Offset ($platformEventProcessorId, $platformTag, $value) -> $s")
             Future.successful(Done)
           case Failure(f) => Future.failed(f)
         }
@@ -145,19 +148,19 @@ trait JdbcJournalProvider extends JournalProvider { _: Db =>
 
 }
 
-trait JdbcPostgresJournalProvider extends JdbcJournalProvider with Postgres {
-  override val offsetSchema: String = "public"
-}
+trait JdbcPostgresJournalProvider extends JdbcJournalProvider with Postgres
 
 trait MockJdbcPostgresJournalProvider extends JdbcPostgresJournalProvider{
   override protected def initJournalProvider(): Unit = {}
+
+  private[this] var _offset: Long = 0L
 
   /**
     * Read current offset
     *
     * @return
     */
-  override protected def readOffset(): Future[Offset] = Future.successful(startOffset())
+  override protected def readOffset(): Future[Offset] = Future.successful(Offset.sequence(_offset))
 
   /**
     * Persist current offset
@@ -165,5 +168,11 @@ trait MockJdbcPostgresJournalProvider extends JdbcPostgresJournalProvider{
     * @param offset - current offset
     * @return
     */
-  override protected def writeOffset(offset: Offset): Future[Done] = Future.successful(Done)
+  override protected def writeOffset(offset: Offset): Future[Done] = {
+    offset match {
+      case Sequence(value) => _offset = value
+      case _ =>
+    }
+    Future.successful(Done)
+  }
 }

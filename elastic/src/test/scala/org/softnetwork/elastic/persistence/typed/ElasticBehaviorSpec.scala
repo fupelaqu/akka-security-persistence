@@ -75,4 +75,5 @@ object SampleBehavior extends ElasticBehavior[Sample]
   override val persistenceId = "Sample"
 
   val manifestWrapper = ManifestW()
+
 }

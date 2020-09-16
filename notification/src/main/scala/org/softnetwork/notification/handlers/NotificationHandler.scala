@@ -49,9 +49,8 @@ trait NotificationDao {_: NotificationHandler =>
 
   def removeNotification(id: String)(implicit system: ActorSystem[_]): Boolean = {
     this !? new RemoveNotification(id) match {
-      case _: NotificationSent      => true
-      case _: NotificationDelivered => true
-      case _                        => false
+      case NotificationRemoved => true
+      case _                   => false
     }
   }
 

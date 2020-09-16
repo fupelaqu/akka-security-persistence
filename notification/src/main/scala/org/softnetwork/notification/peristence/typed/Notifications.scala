@@ -8,8 +8,9 @@ import akka.actor.typed.ActorRef
 import akka.persistence.typed.scaladsl.Effect
 
 import org.slf4j.Logger
+import org.softnetwork.akka.model.Schedule
 
-import org.softnetwork.akka.persistence.typed.{Schedule, EntityBehavior}
+import org.softnetwork.akka.persistence.typed.EntityBehavior
 
 import org.softnetwork.notification.handlers._
 
@@ -19,8 +20,6 @@ import org.softnetwork.notification.model._
 
 import scala.language.{implicitConversions, postfixOps}
 
-import scala.concurrent.duration._
-
 /**
   * Created by smanciot on 13/04/2020.
   */
@@ -29,16 +28,9 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
 
   private[this] val provider: NotificationProvider[T] = this
 
-  private case object NotificationTimerKey
+  private[this] val notificationTimerKey: String = "NotificationTimerKey"
 
-  override protected val schedules =
-    Seq(
-      Schedule(
-        NotificationTimerKey,
-        NotificationTimeout,
-        Some(1.minute)
-      )
-    )
+  protected val delay = 60
 
   /**
     *
@@ -65,7 +57,10 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           case n: Push => Some(PushRecordedEvent(n))
           case _ => None
         }) match {
-          case Some(event) => Effect.persist(event).thenRun(_ => NotificationAdded(entityId) ~> replyTo)
+          case Some(event) => Effect.persist(event).thenRun(_ => {
+            schedulerDao.addSchedule(Schedule(persistenceId, entityId, notificationTimerKey, delay))
+            NotificationAdded(entityId) ~> replyTo
+          })
           case _ => Effect.unhandled
         }
 
@@ -74,9 +69,29 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           NotificationRemovedEvent(
             entityId
           )
-        ).thenRun(_ => NotificationRemoved ~> replyTo).thenStop()
+        ).thenRun(_ => {
+          schedulerDao.removeSchedule(persistenceId, entityId, notificationTimerKey)
+          NotificationRemoved ~> replyTo
+        })//.thenStop()
 
-      case cmd: SendNotification[T] => sendNotification(entityId, cmd.notification, replyTo)
+      case cmd: SendNotification[T] =>
+        sendNotification(entityId, cmd.notification, replyTo) match {
+          case Some(event) =>
+            Effect.persist(event)
+              .thenRun(state => {
+                schedulerDao.addSchedule(Schedule(persistenceId, entityId, notificationTimerKey, delay))
+                import NotificationStatus._
+                event.asInstanceOf[NotificationRecordedEvent[T]].notification.status match {
+                  case Rejected    => NotificationRejected(entityId)
+                  case Undelivered => NotificationUndelivered(entityId)
+                  case Sent        => NotificationSent(entityId)
+                  case Delivered   => NotificationDelivered(entityId)
+                  case _           => NotificationPending(entityId)
+                }
+              }
+                ~> replyTo)
+          case _ => Effect.none
+        }
 
       case cmd: ResendNotification => state match {
         case Some(s) =>
@@ -85,7 +100,24 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           status match {
             case Sent      => Effect.none.thenRun(_ => NotificationSent(entityId) ~> replyTo)
             case Delivered => Effect.none.thenRun(_ => NotificationDelivered(entityId) ~> replyTo)
-            case _         => sendNotification(entityId, s, replyTo)
+            case _         =>
+              sendNotification(entityId, s, replyTo) match {
+                case Some(event) =>
+                  Effect.persist(event)
+                    .thenRun(state => {
+                      schedulerDao.addSchedule(Schedule(persistenceId, entityId, notificationTimerKey, delay))
+                      import NotificationStatus._
+                      event.asInstanceOf[NotificationRecordedEvent[T]].notification.status match {
+                        case Rejected    => NotificationRejected(entityId)
+                        case Undelivered => NotificationUndelivered(entityId)
+                        case Sent        => NotificationSent(entityId)
+                        case Delivered   => NotificationDelivered(entityId)
+                        case _           => NotificationPending(entityId)
+                      }
+                    }
+                      ~> replyTo)
+                case _ => Effect.none
+              }
           }
         case _ => Effect.none.thenRun(_ => NotificationNotFound ~> replyTo)
       }
@@ -105,30 +137,56 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
           case _ => Effect.none.thenRun(_ => NotificationNotFound ~> replyTo)
         }
 
+      case cmd: TriggerSchedule4Notification =>
+        import cmd.schedule._
+        if(key == notificationTimerKey){
+          context.self ! NotificationTimeout
+          Effect.none.thenRun(_ => Schedule4NotificationTriggered ~> replyTo)
+        }
+        else{
+          Effect.none.thenRun(_ => Schedule4NotificationNotTriggered ~> replyTo)
+        }
+
       case NotificationTimeout =>
         state match {
           case Some(s) =>
             import s._
             import NotificationStatus._
             status match {
-              case Sent      =>
-                timers.cancel(NotificationTimerKey)
-                Effect.none
-              case Delivered =>
-                timers.cancel(NotificationTimerKey)
-                Effect.none
-              case Pending   => sendNotification(entityId, s, None)
-              case _         =>
-                // Rejected | Undelivered
-                if(maxTries > 0 && nbTries > maxTries){
-                  timers.cancel(NotificationTimerKey)
-                  Effect.none
+              case Sent      => // the notification has been sent - the schedule should be removed
+                Effect.none.thenRun(_ => schedulerDao.removeSchedule(persistenceId, entityId, notificationTimerKey))
+              case Delivered => // the notification has been delivered - the schedule should be removed
+                Effect.none.thenRun(_ => schedulerDao.removeSchedule(persistenceId, entityId, notificationTimerKey))
+              case Pending   => // the notification is in pending status ...
+                sendNotification(entityId, s, None) match {
+                  case Some(event) =>
+                    Effect.persist(event)
+                      .thenRun(state =>
+                        schedulerDao.addSchedule(
+                          Schedule(persistenceId, entityId, notificationTimerKey, delay)
+                        )
+                      )
+                  case _ => Effect.none
                 }
-                else{
-                  sendNotification(entityId, s, None)
+              case _         => // the notification has been rejected or undelivered
+                if(maxTries > 0 && nbTries >= maxTries){
+                  Effect.none.thenRun(_ => schedulerDao.removeSchedule(persistenceId, entityId, notificationTimerKey))
+                }
+                else {
+                  sendNotification(entityId, s, None) match {
+                    case Some(event) =>
+                      Effect.persist(event)
+                        .thenRun(state =>
+                          schedulerDao.addSchedule(
+                            Schedule(persistenceId, entityId, notificationTimerKey, delay)
+                          )
+                        )
+                    case _ => Effect.none
+                  }
                 }
             }
-          case _ => Effect.none
+          case _ =>
+            Effect.none.thenRun(_ => schedulerDao.removeSchedule(persistenceId, entityId, notificationTimerKey))
         }
 
       case _ => super.handleCommand(entityId, state, command, replyTo, timers)
@@ -208,7 +266,7 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
                         _uuid: String,
                         notification: T,
                         replyTo: Option[ActorRef[NotificationCommandResult]])(implicit log: Logger
-  ): Effect[NotificationEvent, Option[T]] = {
+  ): Option[NotificationEvent] = {
     import notification._
     import NotificationStatus._
     val maybeSent = status match {
@@ -217,22 +275,30 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
       case Pending     =>
         notification.deferred match {
           case Some(deferred) if deferred.after(new Date()) => None
-          case _ => Some(provider.send(notification))
+          case _ =>
+            if(nbTries > 0) { // the notification has already been sent at least one time, waiting for an acknowledgement
+              Some((provider.ack(notification), 0)) // FIXME acknowledgment must be properly implemented ...
+            }
+            else {
+              Some((provider.send(notification), 1))
+            }
         }
       case _ =>
         // Undelivered or Rejected
-        if(maxTries > 0 && nbTries > maxTries){
+        if(maxTries > 0 && nbTries >= maxTries){
           None
         }
-        else
-          Some(provider.send(notification))
+        else {
+          Some((provider.send(notification), 1))
+        }
     }
-    (notification match {
+    notification match {
       case n: Mail =>
         Some(
           MailRecordedEvent(
             maybeSent match {
-              case Some(ack) => n.incNbTries().copyWithAck(ack).asInstanceOf[Mail]
+              case Some(ack) =>
+                n.withNbTries(n.nbTries + ack._2).copyWithAck(ack._1).asInstanceOf[Mail]
               case _ => n
             }
           )
@@ -241,7 +307,7 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
         Some(
           SMSRecordedEvent(
             maybeSent match {
-              case Some(ack) => n.incNbTries().copyWithAck(ack).asInstanceOf[SMS]
+              case Some(ack) => n.withNbTries(n.nbTries + ack._2).copyWithAck(ack._1).asInstanceOf[SMS]
               case _ => n
             }
           )
@@ -250,27 +316,12 @@ sealed trait NotificationBehavior[T <: Notification] extends EntityBehavior[
         Some(
           PushRecordedEvent(
             maybeSent match {
-              case Some(ack) => n.incNbTries().copyWithAck(ack).asInstanceOf[Push]
+              case Some(ack) => n.withNbTries(n.nbTries + ack._2).copyWithAck(ack._1).asInstanceOf[Push]
               case _ => n
             }
           )
         )
       case _ => None
-    }) match {
-      case Some(event) =>
-        Effect.persist(event)
-          .thenRun(state => {
-            import NotificationStatus._
-            event.notification.status match {
-              case Rejected    => NotificationRejected(_uuid)
-              case Undelivered => NotificationUndelivered(_uuid)
-              case Sent        => NotificationSent(_uuid)
-              case Delivered   => NotificationDelivered(_uuid)
-              case _           => NotificationPending(_uuid)
-            }
-          }
-        ~> replyTo)
-      case _ => Effect.unhandled
     }
   }
 
@@ -282,6 +333,7 @@ trait AllNotificationsBehavior extends NotificationBehavior[Notification] with A
 
 trait MockAllNotificationsBehavior extends AllNotificationsBehavior with MockAllNotificationsProvider {
   override val persistenceId = "MockNotification"
+  override val delay = 0
 }
 
 object AllNotificationsBehavior extends AllNotificationsBehavior

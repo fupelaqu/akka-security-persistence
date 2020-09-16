@@ -1,7 +1,5 @@
 package org.softnetwork.security
 
-import akka.actor.typed.ActorRef
-
 import org.softnetwork.akka.message._
 
 import org.softnetwork.security.model._
@@ -66,7 +64,7 @@ package object message {
   case class RegisterDevice(uuid: String, registration: DeviceRegistration) extends DeviceCommand
 
   @SerialVersionUID(0L)
-  case class UnregisterDevice(uuid: String, regId: String) extends DeviceCommand
+  case class UnregisterDevice(uuid: String, regId: String, deviceId: Option[String] = None) extends DeviceCommand
 
   @SerialVersionUID(0L)
   case class UpdateProfile(uuid: String, profile: Profile) extends AccountCommand

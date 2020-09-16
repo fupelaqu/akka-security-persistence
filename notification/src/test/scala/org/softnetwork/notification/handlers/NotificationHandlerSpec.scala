@@ -1,11 +1,16 @@
 package org.softnetwork.notification.handlers
 
-import akka.actor.typed.Behavior
+import akka.actor.typed.eventstream.EventStream.Subscribe
+import akka.actor.typed.{ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.persistence.jdbc.util.PersistenceTypedActorTestKit
 import org.scalatest.wordspec.AnyWordSpecLike
+import org.softnetwork.akka.persistence.jdbc.query.MockJdbcPostgresJournalProvider
+import org.softnetwork.akka.persistence.query.EventProcessor
+import org.softnetwork.akka.persistence.typed.SchedulerBehavior
 import org.softnetwork.notification.message._
 import org.softnetwork.notification.model.{From, Mail}
+import org.softnetwork.notification.peristence.query.Scheduler2NotificationProcessorStream
 import org.softnetwork.notification.peristence.typed.MockAllNotificationsBehavior
 
 /**
@@ -25,6 +30,16 @@ class NotificationHandlerSpec extends MockNotificationHandler with AnyWordSpecLi
   override def guardian(): Behavior[Nothing] = {
     Behaviors.setup[Nothing] {context =>
       MockAllNotificationsBehavior.init(context.system)
+      SchedulerBehavior.init(context.system)
+      context.spawnAnonymous[Nothing](
+        EventProcessor(
+          new Scheduler2NotificationProcessorStream() with MockNotificationHandler with MockJdbcPostgresJournalProvider {
+            override val tag = s"${MockAllNotificationsBehavior.persistenceId}-scheduler"
+            override val forTests = true
+            override implicit val system: ActorSystem[_] = context.system
+          }
+        )
+      )
       Behaviors.empty
     }
   }
@@ -110,6 +125,29 @@ class NotificationHandlerSpec extends MockNotificationHandler with AnyWordSpecLi
             new GetNotificationStatus(uuid)
           ) match {
             case n: NotificationSent => n.uuid shouldBe uuid
+            case _                   => fail()
+          }
+        case _                    => fail()
+      }
+    }
+
+    "trigger notification" in {
+      val probe = createTestProbe[Schedule4NotificationTriggered.type]()
+      system.eventStream.tell(Subscribe(probe.ref))
+      val uuid = "trigger"
+      this ? (
+        uuid,
+        new SendNotification(_mail(uuid))
+        ) match {
+        case n: NotificationSent =>
+          n.uuid shouldBe uuid
+          this ? (
+            uuid,
+            new GetNotificationStatus(uuid)
+            ) match {
+            case n: NotificationSent =>
+              n.uuid shouldBe uuid
+              probe.expectMessage(Schedule4NotificationTriggered)
             case _                   => fail()
           }
         case _                    => fail()
